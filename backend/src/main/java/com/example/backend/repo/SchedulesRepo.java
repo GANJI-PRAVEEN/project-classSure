@@ -8,4 +8,5 @@ import java.util.List;
 public interface SchedulesRepo extends MongoRepository<Schedule,String> {
     List<Schedule> findAllByParentId(String parentId);
     List<Schedule> findAllByChildId(String childId);
+    List<Schedule> findAllByTutorIdAndStatus(String tutorId,String status);
 }

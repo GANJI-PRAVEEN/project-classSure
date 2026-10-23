@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const API_BASE_URL = "http://localhost:8080";
 
 export default function Login() {
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -40,9 +42,9 @@ export default function Login() {
           password: form.password,
         }),
       });
-      
+
       const responseText = await response.text();
-      console.log("Response Text",responseText);
+      console.log("Response Text", responseText);
 
       if (!response.ok) {
         throw new Error(
@@ -67,17 +69,23 @@ export default function Login() {
         typeof result === "object" && result !== null
           ? result.role
           : null;
+      const user =
+        typeof result === "object" && result !== null
+          ? result.user
+          : null;
 
-      if (!token || !role) {
+      if (!token || !role || !user) {
         throw new Error(
-          "Login response must contain both a token and a role."
+          "Login response must contain both a token,a role and a user"
         );
       }
 
       // Store the token for authenticated API requests.
-      sessionStorage.setItem("token", token);
-      // console.log("Session token",sessionStorage.getItem("token"));
-      sessionStorage.setItem("role", role);
+      // localStorage.setItem("token", token);
+      // localStorage.setItem("role", role);
+      // localStorage.setItem("user", JSON.stringify(user));
+      login(token, user, role);
+      console.log("set user ", localStorage.getItem("user"));
 
       // Redirect according to the user's actual role.
       if (role === "TUTOR") {

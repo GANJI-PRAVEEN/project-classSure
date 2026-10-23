@@ -5,18 +5,21 @@ import com.example.backend.config.JwtService;
 import com.example.backend.model.Users;
 import com.example.backend.repo.Userrepo;
 import io.jsonwebtoken.Jwt;
+import org.apache.coyote.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/auth")
@@ -45,6 +48,23 @@ public class AuthController {
         return "Saved...!";
     }
 
+    @GetMapping("/getCurrentUser")
+    public ResponseEntity<?> getLoggedInUser(Authentication authentication){
+        try {
+            if(authentication!=null & authentication.isAuthenticated()){
+                Optional<Users> user = userrepo.findByEmail(authentication.getName());
+                if(user.isPresent()){
+                    Users currentUser = user.get();
+                    return ResponseEntity.ok(currentUser);
+                }
+            }
+        }catch (Exception e){
+            System.out.println("Failed in fetching user data using id"+e);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Users users){
         try {
@@ -58,6 +78,7 @@ public class AuthController {
                     Map.of(
                             "Message","User Matched",
                             "token",token,
+                            "user",loggedInUser,
                             "role",loggedInUser.getRole()
                     )
             );

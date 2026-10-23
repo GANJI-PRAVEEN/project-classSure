@@ -27,8 +27,9 @@ export default function ParentDashboard() {
   ];
 
   function handleLogout() {
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("role");
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("user");
     navigate("/login");
   }
 
@@ -83,9 +84,8 @@ export default function ParentDashboard() {
 
         {/* Sidebar */}
         <aside
-          className={`fixed bottom-0 left-0 top-16 z-30 w-64 border-r border-slate-200 bg-white transition-transform lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:w-60 lg:translate-x-0 ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          className={`fixed bottom-0 left-0 top-16 z-30 w-64 border-r border-slate-200 bg-white transition-transform lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:w-60 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
         >
           <div className="border-b border-slate-100 px-5 py-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -104,11 +104,10 @@ export default function ParentDashboard() {
                     setActiveSection(label);
                     setSidebarOpen(false);
                   }}
-                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${
-                    isActive
-                      ? "bg-blue-50 font-semibold text-blue-700"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${isActive
+                    ? "bg-blue-50 font-semibold text-blue-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                    }`}
                 >
                   <Icon size={19} />
                   <span>{label}</span>
@@ -160,7 +159,7 @@ export default function ParentDashboard() {
 
             {activeSection === "My Children" && (
               <section className="mt-8">
-                <MyChildren/>
+                <MyChildren />
               </section>
             )}
 
