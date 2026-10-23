@@ -109,6 +109,7 @@ public class DataController {
     }
     @PostMapping("/get-subjects-withIds")
     public List<Subjects> getSubjectWithIds(@RequestBody List<String>subjectIds){
+        System.out.println("FETCHING SUBJECTS with data"+subjectIds);
         return subjectRepo.findAllByIdIn(subjectIds);
     }
 }

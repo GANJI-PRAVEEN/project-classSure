@@ -21,6 +21,7 @@ public class Schedule {
     private LocalDate effectiveFrom;
     private LocalDate effectiveTo;
     private String status;
+    private Double hourlyRate;
 
     public Schedule() {
     }
@@ -119,5 +120,28 @@ public class Schedule {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Double getHourlyRate() {
+        return hourlyRate;
+    }
+
+    public void setHourlyRate(Double hourlyRate) {
+        this.hourlyRate = hourlyRate;
+    }
+
+    public Double getSalary() {
+        return hourlyRate;
+    }
+
+    public void setSalary(Double salary) {
+        this.hourlyRate = salary;
+    }
+
+    public Double calculateEarnings(long verifiedPayableMinutes) {
+        if (this.hourlyRate == null || this.hourlyRate <= 0 || verifiedPayableMinutes <= 0) {
+            return 0.0;
+        }
+        return this.hourlyRate * (verifiedPayableMinutes / 60.0);
     }
 }

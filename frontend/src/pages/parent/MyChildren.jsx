@@ -121,6 +121,8 @@ export default function MyChildren() {
   const [endTime, setEndTime] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState("");
   const [effectiveTo, setEffectiveTo] = useState("");
+  const [hourlyRate, setHourlyRate] = useState("");
+
 
   // Load children with their enriched static names and schedules
   async function loadChildrensData() {
@@ -411,11 +413,13 @@ export default function MyChildren() {
     setEndTime("");
     setEffectiveFrom("");
     setEffectiveTo("");
+    setHourlyRate("");
     setErrors({});
     setMessage("");
     setBoards([]);
     setGrades([]);
   }
+
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -482,6 +486,13 @@ export default function MyChildren() {
       newErrors.effectiveTo = "End date must be on or after the effective-from date.";
     }
 
+    // 10. Validate hourly tuition fee
+    if (!hourlyRate || String(hourlyRate).trim() === "") {
+      newErrors.hourlyRate = "Hourly tuition fee is required.";
+    } else if (isNaN(Number(hourlyRate)) || Number(hourlyRate) <= 0) {
+      newErrors.hourlyRate = "Hourly fee must be greater than zero.";
+    }
+
     // Stop and do not make any save requests if validation fails
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -543,8 +554,10 @@ export default function MyChildren() {
         endTime: endTime,
         effectiveFrom: effectiveFrom,
         effectiveTo: effectiveTo || null,
+        hourlyRate: Number(hourlyRate),
         status: "PENDING",
       };
+
 
       let scheduleSaveSuccess = false;
       let scheduleErrorMessage = "";
@@ -586,24 +599,60 @@ export default function MyChildren() {
   }
 
   const inputClass =
-    "w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-50";
+    "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-blue-600 focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
-  const labelClass = "mb-1.5 block text-sm font-medium text-gray-700";
+  const labelClass = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600";
 
   return (
-    <div className="min-h-full bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-6xl">
-        {/* Page header */}
-        <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">
-              My Children
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Manage student details, tuition schedules, and tutor assignments.
-            </p>
-          </div>
+    <div className="w-full">
+      {/* Page header */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            My Children
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage student details, tuition schedules, and tutor assignments.
+          </p>
+        </div>
 
+        <button
+          type="button"
+          onClick={() => {
+            setFormData(initialFormData);
+            setDaysOfWeek([]);
+            setStartTime("");
+            setEndTime("");
+            setEffectiveFrom("");
+            setEffectiveTo("");
+            setHourlyRate("");
+            setErrors({});
+            setMessage("");
+            setShowForm(true);
+          }}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-blue-700 active:scale-[0.99] transition"
+        >
+          <Plus size={18} strokeWidth={2.2} />
+          Add Child
+        </button>
+      </div>
+
+      {errors.initial && (
+        <p className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          {errors.initial}
+        </p>
+      )}
+
+      {/* Children list */}
+      {children.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 sm:p-14 text-center shadow-xs">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100/60">
+            <Users size={26} strokeWidth={1.8} />
+          </div>
+          <h2 className="text-base font-semibold text-slate-900">No children added yet</h2>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+            Click &quot;Add Child&quot; to register a student and request a recurring tuition schedule with a tutor.
+          </p>
           <button
             type="button"
             onClick={() => {
@@ -613,178 +662,196 @@ export default function MyChildren() {
               setEndTime("");
               setEffectiveFrom("");
               setEffectiveTo("");
+              setHourlyRate("");
               setErrors({});
               setMessage("");
               setShowForm(true);
             }}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition"
           >
-            <Plus size={18} />
+            <Plus size={16} strokeWidth={2.2} />
             Add Child
           </button>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
+          {children.map((child) => {
+            const schedule = child.schedule;
+            const isPending = schedule?.status === "PENDING";
+            const isActive = schedule?.status === "ACTIVE" || schedule?.status === "APPROVED";
 
-        {errors.initial && (
-          <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
-            {errors.initial}
-          </p>
-        )}
-
-        {/* Children list */}
-        {children.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
-            <Users size={28} className="mx-auto mb-3 text-blue-600" />
-            <h2 className="font-semibold text-gray-900">No children added yet</h2>
-            <p className="mt-2 text-sm text-gray-500">
-              Click &quot;Add Child&quot; to register a student and request a tuition schedule.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {children.map((child) => {
-              const schedule = child.schedule;
-              const isPending = schedule?.status === "PENDING";
-              const isActive = schedule?.status === "ACTIVE" || schedule?.status === "APPROVED";
-
-              return (
-                <div
-                  key={child.id ?? child._id}
-                  className="flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
-                >
-                  <div>
-                    {/* Header */}
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg font-semibold text-blue-600">
-                          {child.name?.charAt(0)?.toUpperCase() ?? "S"}
-                        </div>
-                        <div>
-                          <h2 className="font-semibold text-gray-900">{child.name}</h2>
-                          <p className="text-sm text-gray-500">{child.grade}</p>
-                        </div>
+            return (
+              <div
+                key={child.id ?? child._id}
+                className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-200"
+              >
+                <div>
+                  {/* Header */}
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 font-bold text-base shadow-xs">
+                        {child.name?.charAt(0)?.toUpperCase() ?? "S"}
                       </div>
-
-                      {schedule ? (
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            isPending
-                              ? "border border-amber-200 bg-amber-50 text-amber-700"
-                              : isActive
-                              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border border-gray-200 bg-gray-50 text-gray-700"
-                          }`}
-                        >
-                          {isPending ? "Pending Approval" : isActive ? "Active" : schedule.status}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-500">
-                          No Schedule
-                        </span>
-                      )}
+                      <div className="min-w-0">
+                        <h2 className="font-semibold text-slate-900 text-base leading-snug truncate">
+                          {child.name}
+                        </h2>
+                        <p className="text-xs font-medium text-slate-500 truncate">
+                          {child.grade || "No grade specified"}
+                        </p>
+                      </div>
                     </div>
 
-                    {/* Details */}
-                    <div className="space-y-3 border-t border-gray-100 pt-4 text-sm">
+                    {schedule ? (
+                      <span
+                        className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border ${
+                          isPending
+                            ? "border-amber-200/80 bg-amber-50 text-amber-700"
+                            : isActive
+                            ? "border-emerald-200/80 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-slate-50 text-slate-700"
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            isPending
+                              ? "bg-amber-500"
+                              : isActive
+                              ? "bg-emerald-500"
+                              : "bg-slate-400"
+                          }`}
+                        />
+                        {isPending ? "Pending Approval" : isActive ? "Active" : schedule.status}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500">
+                        No Schedule
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Details */}
+                  <div className="space-y-3.5 border-t border-slate-100 pt-4 text-sm">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-xs text-gray-500">Education category</p>
-                        <p className="font-medium text-gray-800">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Education category
+                        </p>
+                        <p className="font-medium text-slate-800 text-xs sm:text-sm truncate mt-0.5">
                           {child.educationCategory || "Not specified"}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-xs text-gray-500">Board</p>
-                        <p className="font-medium text-gray-800">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Board
+                        </p>
+                        <p className="font-medium text-slate-800 text-xs sm:text-sm truncate mt-0.5">
                           {child.board || "Not specified"}
                         </p>
                       </div>
+                    </div>
 
-                      <div>
-                        <p className="text-xs text-gray-500">Assigned Tutor</p>
-                        <p className="font-medium text-gray-800">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        Assigned Tutor
+                      </p>
+                      <p className="font-medium text-slate-800 text-xs sm:text-sm mt-0.5 flex items-center gap-1.5 truncate">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0" />
+                        <span className={child.tutorName ? "text-slate-900" : "text-slate-400 italic"}>
                           {child.tutorName || "No tutor assigned"}
-                        </p>
-                      </div>
+                        </span>
+                      </p>
+                    </div>
 
-                      <div>
-                        <p className="mb-1.5 text-xs text-gray-500">Subjects</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(child.subjects ?? []).length > 0 ? (
-                            child.subjects.map((name, idx) => (
-                              <span
-                                key={idx}
-                                className="rounded-md bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
-                              >
-                                {name}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-gray-400">None specified</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Schedule Timings Section */}
-                      <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                          <Clock size={13} className="text-blue-600" />
-                          <span>Tuition Schedule</span>
-                        </div>
-
-                        {schedule ? (
-                          <div className="space-y-1.5 text-xs">
-                            <div>
-                              <span className="text-slate-500">Class Days: </span>
-                              <span className="font-medium text-slate-800">
-                                {formatDays(schedule.daysOfWeek) || "Not specified"}
-                              </span>
-                            </div>
-
-                            <div>
-                              <span className="text-slate-500">Timings: </span>
-                              <span className="font-medium text-slate-800">
-                                {formatTime(schedule.startTime)} – {formatTime(schedule.endTime)}
-                              </span>
-                            </div>
-
-                            <div>
-                              <span className="text-slate-500">Effective: </span>
-                              <span className="font-medium text-slate-800">
-                                {formatDate(schedule.effectiveFrom)} →{" "}
-                                {schedule.effectiveTo ? formatDate(schedule.effectiveTo) : "Ongoing"}
-                              </span>
-                            </div>
-
-                            {isPending && (
-                              <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-                                Schedule pending tutor approval
-                              </p>
-                            )}
-                          </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                        Subjects
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(child.subjects ?? []).length > 0 ? (
+                          child.subjects.map((name, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center rounded-full border border-blue-200/60 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
+                            >
+                              {name}
+                            </span>
+                          ))
                         ) : (
-                          <p className="text-xs italic text-slate-400">No schedule available</p>
+                          <span className="text-xs italic text-slate-400">None specified</span>
                         )}
                       </div>
                     </div>
+
+                    {/* Schedule Timings Section */}
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 mt-2">
+                      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                        <Clock size={13} className="text-blue-600" />
+                        <span>Tuition Schedule</span>
+                      </div>
+
+                      {schedule ? (
+                        <div className="space-y-1.5 text-xs">
+                          {schedule.hourlyRate != null && schedule.hourlyRate > 0 && (
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-slate-500 shrink-0">Hourly Rate:</span>
+                              <span className="font-semibold text-slate-900 text-right">
+                                ₹{schedule.hourlyRate}/hr
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-slate-500 shrink-0">Class Days:</span>
+                            <span className="font-medium text-slate-800 text-right">
+                              {formatDays(schedule.daysOfWeek) || "Not specified"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-slate-500 shrink-0">Timings:</span>
+                            <span className="font-medium text-slate-800 text-right">
+                              {formatTime(schedule.startTime)} – {formatTime(schedule.endTime)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-slate-500 shrink-0">Effective:</span>
+                            <span className="font-medium text-slate-800 text-right">
+                              {formatDate(schedule.effectiveFrom)} →{" "}
+                              {schedule.effectiveTo ? formatDate(schedule.effectiveTo) : "Ongoing"}
+                            </span>
+                          </div>
+
+                          {isPending && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center gap-1.5 text-[11px] font-medium text-amber-700">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                              <span>Schedule pending tutor approval</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs italic text-slate-400">No schedule available</p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add child modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-5">
-          <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sm:px-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-3 sm:p-5 overflow-y-auto">
+          <div className="relative my-auto flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">
+                <h2 className="text-lg font-bold tracking-tight text-slate-900">
                   Add Child
                 </h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="mt-0.5 text-xs text-slate-500">
                   Enter student details and set recurring tuition timings.
                 </p>
               </div>
@@ -794,7 +861,7 @@ export default function MyChildren() {
                 onClick={handleClose}
                 disabled={submitting}
                 aria-label="Close form"
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 transition-colors"
               >
                 <X size={20} />
               </button>
@@ -804,7 +871,7 @@ export default function MyChildren() {
               onSubmit={handleSubmit}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+              <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
                 {/* Student name */}
                 <div>
                   <label className={labelClass} htmlFor="studentName">
@@ -822,7 +889,7 @@ export default function MyChildren() {
                     required
                   />
                   {errors.studentName && (
-                    <p className="mt-1 text-xs text-red-600">{errors.studentName}</p>
+                    <p className="mt-1 text-xs text-rose-600">{errors.studentName}</p>
                   )}
                 </div>
 
@@ -843,11 +910,11 @@ export default function MyChildren() {
                     disabled={submitting}
                     required
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-slate-500">
                     Enter the email the tutor used to register on ClassSure.
                   </p>
                   {errors.tutorEmail && (
-                    <p className="mt-1 text-xs text-red-600">{errors.tutorEmail}</p>
+                    <p className="mt-1 text-xs text-rose-600">{errors.tutorEmail}</p>
                   )}
                 </div>
 
@@ -877,7 +944,7 @@ export default function MyChildren() {
                     ))}
                   </select>
                   {errors.educationCategory && (
-                    <p className="mt-1 text-xs text-red-600">
+                    <p className="mt-1 text-xs text-rose-600">
                       {errors.educationCategory}
                     </p>
                   )}
@@ -911,7 +978,7 @@ export default function MyChildren() {
                       ))}
                     </select>
                     {errors.board && (
-                      <p className="mt-1 text-xs text-red-600">{errors.board}</p>
+                      <p className="mt-1 text-xs text-rose-600">{errors.board}</p>
                     )}
                   </div>
                 )}
@@ -948,7 +1015,7 @@ export default function MyChildren() {
                     ))}
                   </select>
                   {errors.grade && (
-                    <p className="mt-1 text-xs text-red-600">{errors.grade}</p>
+                    <p className="mt-1 text-xs text-rose-600">{errors.grade}</p>
                   )}
                 </div>
 
@@ -956,51 +1023,90 @@ export default function MyChildren() {
                 <div>
                   <label className={labelClass}>Subjects *</label>
                   {loadingSubjects ? (
-                    <p className="text-sm text-gray-500">Loading subjects...</p>
+                    <p className="text-xs text-slate-500">Loading subjects...</p>
                   ) : subjects.length === 0 ? (
-                    <p className="text-sm text-gray-500">No subjects available.</p>
+                    <p className="text-xs text-slate-500">No subjects available.</p>
                   ) : (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {subjects.map((subject) => {
                         const subjectId = String(getId(subject));
+                        const isChecked = formData.subjects.includes(subjectId);
                         return (
                           <label
                             key={subjectId}
-                            className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                            className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all ${
+                              isChecked
+                                ? "border-blue-600 bg-blue-50/70 text-blue-700 shadow-xs"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
                           >
                             <input
                               type="checkbox"
-                              checked={formData.subjects.includes(subjectId)}
+                              checked={isChecked}
                               onChange={() => handleSubjectChange(subjectId)}
                               disabled={submitting}
-                              className="accent-blue-600"
+                              className="h-4 w-4 rounded accent-blue-600"
                             />
-                            {getName(subject)}
+                            <span className="truncate">{getName(subject)}</span>
                           </label>
                         );
                       })}
                     </div>
                   )}
                   {errors.subjects && (
-                    <p className="mt-1 text-xs text-red-600">{errors.subjects}</p>
+                    <p className="mt-1 text-xs text-rose-600">{errors.subjects}</p>
                   )}
                 </div>
 
                 {/* Tuition Schedule section */}
                 <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5">
                   <div className="mb-4 flex items-center gap-2">
-                    <Clock size={18} className="text-blue-600" />
-                    <h3 className="text-base font-semibold text-gray-900">
+                    <Clock size={17} className="text-blue-600" />
+                    <h3 className="text-sm font-bold text-slate-900">
                       Tuition Schedule *
                     </h3>
                   </div>
 
+                  {/* Hourly Tuition Fee */}
+                  <div className="mb-4">
+                    <label className={labelClass} htmlFor="hourlyRate">
+                      Hourly Tuition Fee (₹/hour) *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-sm font-semibold text-slate-400">
+                        ₹
+                      </span>
+                      <input
+                        id="hourlyRate"
+                        name="hourlyRate"
+                        type="number"
+                        min="1"
+                        step="any"
+                        value={hourlyRate}
+                        onChange={(e) => {
+                          setHourlyRate(e.target.value);
+                          setErrors((prev) => ({ ...prev, hourlyRate: "" }));
+                        }}
+                        placeholder="Enter hourly fee (e.g., 300)"
+                        className={`${inputClass} pl-8`}
+                        disabled={submitting}
+                        required
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      This rate will be used to calculate the tutor&apos;s earnings from verified teaching hours.
+                    </p>
+                    {errors.hourlyRate && (
+                      <p className="mt-1 text-xs text-rose-600">{errors.hourlyRate}</p>
+                    )}
+                  </div>
+
                   {/* Recurring Class Days */}
-                  <div className="mb-5">
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <div className="mb-4">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">
                       Class Days *
                     </label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {[
                         "MONDAY",
                         "TUESDAY",
@@ -1024,28 +1130,28 @@ export default function MyChildren() {
                               );
                               setErrors((prev) => ({ ...prev, daysOfWeek: "" }));
                             }}
-                            className={`rounded-lg border px-3 py-2 text-xs sm:text-sm font-medium transition ${
+                            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
                               selected
-                                ? "border-blue-600 bg-blue-600 text-white shadow-sm"
-                                : "border-gray-300 bg-white text-gray-700 hover:border-blue-400"
+                                ? "border-blue-600 bg-blue-600 text-white shadow-xs"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40"
                             } disabled:cursor-not-allowed disabled:opacity-50`}
                           >
-                            {day.charAt(0) + day.slice(1).toLowerCase()}
+                            {day.charAt(0) + day.slice(1, 3).toLowerCase()}
                           </button>
                         );
                       })}
                     </div>
                     {errors.daysOfWeek && (
-                      <p className="mt-1 text-xs text-red-600">{errors.daysOfWeek}</p>
+                      <p className="mt-1 text-xs text-rose-600">{errors.daysOfWeek}</p>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                     {/* Start Time */}
                     <div>
                       <label
                         htmlFor="startTime"
-                        className="mb-1.5 block text-sm font-medium text-gray-700"
+                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
                       >
                         Start Time *
                       </label>
@@ -1062,7 +1168,7 @@ export default function MyChildren() {
                         required
                       />
                       {errors.startTime && (
-                        <p className="mt-1 text-xs text-red-600">{errors.startTime}</p>
+                        <p className="mt-1 text-xs text-rose-600">{errors.startTime}</p>
                       )}
                     </div>
 
@@ -1070,7 +1176,7 @@ export default function MyChildren() {
                     <div>
                       <label
                         htmlFor="endTime"
-                        className="mb-1.5 block text-sm font-medium text-gray-700"
+                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
                       >
                         End Time *
                       </label>
@@ -1087,7 +1193,7 @@ export default function MyChildren() {
                         required
                       />
                       {errors.endTime && (
-                        <p className="mt-1 text-xs text-red-600">{errors.endTime}</p>
+                        <p className="mt-1 text-xs text-rose-600">{errors.endTime}</p>
                       )}
                     </div>
 
@@ -1095,7 +1201,7 @@ export default function MyChildren() {
                     <div>
                       <label
                         htmlFor="effectiveFrom"
-                        className="mb-1.5 block text-sm font-medium text-gray-700"
+                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
                       >
                         Effective From *
                       </label>
@@ -1112,7 +1218,7 @@ export default function MyChildren() {
                         required
                       />
                       {errors.effectiveFrom && (
-                        <p className="mt-1 text-xs text-red-600">{errors.effectiveFrom}</p>
+                        <p className="mt-1 text-xs text-rose-600">{errors.effectiveFrom}</p>
                       )}
                     </div>
 
@@ -1120,10 +1226,10 @@ export default function MyChildren() {
                     <div>
                       <label
                         htmlFor="effectiveTo"
-                        className="mb-1.5 block text-sm font-medium text-gray-700"
+                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
                       >
                         Effective To
-                        <span className="ml-1 font-normal text-gray-400">
+                        <span className="ml-1 font-normal text-slate-400">
                           (Optional)
                         </span>
                       </label>
@@ -1140,30 +1246,30 @@ export default function MyChildren() {
                         className={inputClass}
                       />
                       {errors.effectiveTo && (
-                        <p className="mt-1 text-xs text-red-600">{errors.effectiveTo}</p>
+                        <p className="mt-1 text-xs text-rose-600">{errors.effectiveTo}</p>
                       )}
                     </div>
                   </div>
 
-                  <p className="mt-3 text-xs text-gray-500">
+                  <p className="mt-3 text-xs text-slate-500">
                     Schedules are submitted with &quot;Pending&quot; status and become active once accepted by your tutor.
                   </p>
                 </div>
 
                 {message && (
-                  <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 border border-blue-200">
+                  <p className="rounded-xl bg-blue-50 p-3.5 text-xs sm:text-sm text-blue-700 border border-blue-200">
                     {message}
                   </p>
                 )}
               </div>
 
               {/* Modal footer */}
-              <div className="flex justify-end gap-3 border-t border-gray-200 bg-white px-5 py-4 sm:px-6">
+              <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-3.5 sm:px-6">
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={submitting}
-                  className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -1171,7 +1277,7 @@ export default function MyChildren() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 transition"
+                  className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-xs hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 transition-all"
                 >
                   {submitting ? "Saving..." : "Save Child"}
                 </button>

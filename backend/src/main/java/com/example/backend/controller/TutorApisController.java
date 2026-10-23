@@ -1,11 +1,14 @@
 package com.example.backend.controller;
 
 
+import com.example.backend.enums.SessionStatus;
 import com.example.backend.model.Children;
 import com.example.backend.model.Schedule;
+import com.example.backend.model.Session;
 import com.example.backend.model.Users;
 import com.example.backend.repo.ChildrenRepo;
 import com.example.backend.repo.SchedulesRepo;
+import com.example.backend.repo.SessionRepo;
 import com.example.backend.repo.Userrepo;
 import org.apache.coyote.Response;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,10 +19,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.*;
 
 import javax.swing.text.html.Option;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/tutor")
@@ -30,6 +33,8 @@ public class TutorApisController {
     private SchedulesRepo schedulesRepo;
     @Autowired
     private Userrepo userrepo;
+    @Autowired
+    private SessionRepo sessionRepo;
 
     @GetMapping("/get-students/{tutorId}")
     public List<Children> getAllStudents(@PathVariable String tutorId){
@@ -51,9 +56,14 @@ public class TutorApisController {
                     return ResponseEntity.ok(response);
 
                 }
+                else{
+                    response.put("message","No Parent Requests");
+                    response.put("data",null);
+                    return ResponseEntity.ok(response);
+                }
             }
         }
-        response.put("message","data fetching failed");
+        response.put("message","requests fetching failed");
         response.put("data",null);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
@@ -171,5 +181,81 @@ public class TutorApisController {
         }
     }
 
+    @PostMapping("/sessions/{sessionId}/start")
+    public ResponseEntity<?> startSession(@PathVariable String sessionId,Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+        Optional<Session> optionalSession = sessionRepo.findById(sessionId);
+        if (optionalSession.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Session not found"));
+        }
+        Session session = optionalSession.get();
+        if (session.getSessionStatus() != SessionStatus.UPCOMING) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "Session cannot be started"));
+        }
+
+        session.setActualStart(Instant.now());
+        session.setSessionStatus(SessionStatus.IN_PROGRESS);
+
+        sessionRepo.save(session);
+        return ResponseEntity.ok(
+                Map.of("message", "Session started successfully")
+        );
+
+    }
+
+    @GetMapping("/get-today-schedules")
+    public ResponseEntity<?> getTodaySchedules(Authentication authentication){
+        if(authentication==null || !authentication.isAuthenticated()){
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+        //1. get logged in tutor email
+        String email = authentication.getName();
+        //2. fetch his details to get the id
+        Optional<Users> tutor = userrepo.findByEmail(email);
+        if(tutor.isEmpty()){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message","tutor not found"));
+        }
+
+        //3. find tutor id
+        String tutorId = tutor.get().getId();
+
+        //4.find today date and day
+        LocalDate todayDate = LocalDate.now();
+        DayOfWeek todayDay = todayDate.getDayOfWeek();
+
+        //5. find only tutor accepted tuition details only
+        List<Schedule> acceptedTuitions =
+                schedulesRepo.findAllByTutorIdAndStatus(tutorId,"ACCEPTED");
+        System.out.println("Accepted Tuitions"+acceptedTuitions);
+        //6. among all tuitions find today scheduled tuitions only
+        List<Schedule> todaySchedules = acceptedTuitions.stream()
+                .filter(schedule ->
+                        schedule.getDaysOfWeek()!=null
+                        && schedule.getDaysOfWeek().contains(todayDay)
+                )
+                .filter(schedule ->
+                        schedule.getEffectiveFrom()!=null
+                        && !todayDate.isBefore(schedule.getEffectiveFrom())
+                )
+                .filter(schedule ->
+                      schedule.getEffectiveTo()==null
+                      || !todayDate.isAfter(schedule.getEffectiveTo())
+                )
+                .sorted(Comparator.comparing(Schedule::getStartTime))
+                .toList();
+        System.out.println("Accepted Tuitions"+todaySchedules);
+        return ResponseEntity.ok(Map.of(
+                "message", "Today's schedules fetched successfully",
+                "data", todaySchedules
+                )
+        );
+    }
 
 }

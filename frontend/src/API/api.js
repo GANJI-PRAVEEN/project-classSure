@@ -79,10 +79,12 @@ export async function getSubjectsByIdsAPI(subjectIds) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            ...getAuthHeader()
         },
         body: JSON.stringify(subjectIds)
     });
 }
+
 
 export async function getTutorByIdAPI(tutorId) {
     return fetch(`${BASE_URL}/static_data/get-tutor-id`, {
@@ -167,5 +169,31 @@ export async function updateScheduleStatusAPI(scheduleId, status) {
             ...getAuthHeader()
         },
         body: JSON.stringify({ status })
+    });
+}
+
+/**
+ * Calculate tutor session earnings from hourly rate and approved payable minutes.
+ * Formula: Hourly rate * (verified payable minutes / 60)
+ *
+ * @param {number|string} hourlyRate - The agreed hourly tuition fee (₹/hour)
+ * @param {number|string} verifiedPayableMinutes - The duration approved through verification
+ * @returns {number} Session earnings rounded to 2 decimal places
+ */
+export function calculateSessionEarnings(hourlyRate, verifiedPayableMinutes) {
+    const rate = Number(hourlyRate);
+    const minutes = Number(verifiedPayableMinutes);
+    if (!rate || rate <= 0 || !minutes || minutes <= 0) {
+        return 0;
+    }
+    return Number(((rate * minutes) / 60).toFixed(2));
+}
+
+export async function getTodaySchedulesAPI() {
+    return fetch(`${BASE_URL}/api/tutor/get-today-schedules`, {
+        method: "GET",
+        headers: {
+            ...getAuthHeader()
+        }
     });
 }

@@ -168,7 +168,12 @@ public class ParentApisController {
             return ResponseEntity.badRequest().body(Map.of("error", "Specified tutor is invalid"));
         }
 
-        // 6. Enforce ownership and pending status
+        // 6. Validate hourlyRate if provided
+        if (schedule.getHourlyRate() != null && schedule.getHourlyRate() <= 0) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Hourly tuition fee must be greater than zero"));
+        }
+
+        // 7. Enforce ownership and pending status
         schedule.setParentId(parent.getId());
         schedule.setStatus("PENDING");
 
