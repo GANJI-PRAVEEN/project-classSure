@@ -46,6 +46,7 @@ public class SecurityConfig {
             AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
@@ -77,26 +78,38 @@ public class SecurityConfig {
 
         http
                 .cors(Customizer.withDefaults())
+
                 .csrf(csrf -> csrf.disable())
+
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS
                         )
                 )
+
                 .headers(headers ->
                         headers.frameOptions(frame -> frame.disable())
                 )
+
                 .authorizeHttpRequests(auth -> auth
+                        // Allow CORS preflight requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        // Public endpoints
                         .requestMatchers("/static_data/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/swagger-ui.html").permitAll()
                         .requestMatchers("/swagger-ui/**").permitAll()
                         .requestMatchers("/v3/api-docs/**").permitAll()
+
+                        // Role-based access
                         .requestMatchers("/api/tutor/**").hasRole("TUTOR")
                         .requestMatchers("/api/parent/**").hasRole("PARENT")
+
+                        // All remaining endpoints require authentication
                         .anyRequest().authenticated()
                 )
+
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
@@ -104,4 +117,6 @@ public class SecurityConfig {
 
         return http.build();
     }
+
+
 }
