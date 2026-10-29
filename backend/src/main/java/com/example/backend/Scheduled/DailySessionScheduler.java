@@ -24,7 +24,7 @@ public class DailySessionScheduler {
         this.sessionRepo = sessionRepo;
     }
 
-    @Scheduled(cron = "0 * * * * *", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Kolkata")
     public void generateDailySessions(){
         ensureSessionsForDate(LocalDate.now(ZONE));
     }
@@ -67,7 +67,7 @@ public class DailySessionScheduler {
             sessionRepo.save(session);
         }
     }
-    @Scheduled(cron = "0 * * * * *", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Kolkata")
     public void updateMissedSessions(){
         System.out.println("Updatingold sessions");
         LocalDate today = LocalDate.now(ZONE);
