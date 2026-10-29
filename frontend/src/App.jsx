@@ -4,7 +4,7 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import './App.css'
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Signup from './pages/signup.jsx';
+import Signup from './pages/Signup.jsx';
 import Login from './pages/login.jsx'
 import TutorDashboard from './pages/Tutor/TutorDashboard.jsx';
 import ParentDashboard from './pages/parent/ParentDashboard.jsx'
