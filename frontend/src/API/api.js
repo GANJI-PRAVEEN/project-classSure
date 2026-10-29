@@ -1,5 +1,6 @@
 
-const BASE_URL = "http://localhost:8080";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+console.log("API Base URL:", BASE_URL);
 
 function getAuthHeader() {
     const token = localStorage.getItem("token");

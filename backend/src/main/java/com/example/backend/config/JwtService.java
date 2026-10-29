@@ -4,6 +4,7 @@ package com.example.backend.config;
 import io.jsonwebtoken.Jwt;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -12,7 +13,8 @@ import java.util.Date;
 
 @Service
 public class JwtService {
-    private final String secret = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    @Value("${JWT_SECRET}")
+    private String secret;
 
     public SecretKey getKey(){
         byte[]  keyBytes = Base64.getDecoder().decode(secret);
