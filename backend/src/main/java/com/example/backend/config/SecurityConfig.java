@@ -92,7 +92,7 @@ public class SecurityConfig {
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         );
         config.setAllowedOrigins(
-                List.of("http://localhost:5173")
+                List.of("https://project-class-sure.vercel.app")
         );
         config.setAllowedHeaders(
                 List.of("*")
