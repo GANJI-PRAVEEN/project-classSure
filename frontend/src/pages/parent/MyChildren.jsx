@@ -17,7 +17,7 @@ import {
   getScheduleByChildIdAPI,
 } from "../../API/api.js";
 
-const API = "http://localhost:8080/static_data";
+const API = `${import.meta.env.VITE_API_BASE_URL}/static_data`;
 
 const initialFormData = {
   studentName: "",
@@ -704,22 +704,20 @@ export default function MyChildren() {
 
                     {schedule ? (
                       <span
-                        className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border ${
-                          isPending
-                            ? "border-amber-200/80 bg-amber-50 text-amber-700"
-                            : isActive
+                        className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border ${isPending
+                          ? "border-amber-200/80 bg-amber-50 text-amber-700"
+                          : isActive
                             ? "border-emerald-200/80 bg-emerald-50 text-emerald-700"
                             : "border-slate-200 bg-slate-50 text-slate-700"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            isPending
-                              ? "bg-amber-500"
-                              : isActive
+                          className={`h-1.5 w-1.5 rounded-full ${isPending
+                            ? "bg-amber-500"
+                            : isActive
                               ? "bg-emerald-500"
                               : "bg-slate-400"
-                          }`}
+                            }`}
                         />
                         {isPending ? "Pending Approval" : isActive ? "Active" : schedule.status}
                       </span>
@@ -1034,11 +1032,10 @@ export default function MyChildren() {
                         return (
                           <label
                             key={subjectId}
-                            className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all ${
-                              isChecked
-                                ? "border-blue-600 bg-blue-50/70 text-blue-700 shadow-xs"
-                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                            }`}
+                            className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all ${isChecked
+                              ? "border-blue-600 bg-blue-50/70 text-blue-700 shadow-xs"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                              }`}
                           >
                             <input
                               type="checkbox"
@@ -1130,11 +1127,10 @@ export default function MyChildren() {
                               );
                               setErrors((prev) => ({ ...prev, daysOfWeek: "" }));
                             }}
-                            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
-                              selected
-                                ? "border-blue-600 bg-blue-600 text-white shadow-xs"
-                                : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40"
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${selected
+                              ? "border-blue-600 bg-blue-600 text-white shadow-xs"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40"
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
                           >
                             {day.charAt(0) + day.slice(1, 3).toLowerCase()}
                           </button>
