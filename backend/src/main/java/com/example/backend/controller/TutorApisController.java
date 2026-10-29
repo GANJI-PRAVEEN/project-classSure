@@ -2,14 +2,8 @@ package com.example.backend.controller;
 
 
 import com.example.backend.enums.SessionStatus;
-import com.example.backend.model.Children;
-import com.example.backend.model.Schedule;
-import com.example.backend.model.Session;
-import com.example.backend.model.Users;
-import com.example.backend.repo.ChildrenRepo;
-import com.example.backend.repo.SchedulesRepo;
-import com.example.backend.repo.SessionRepo;
-import com.example.backend.repo.Userrepo;
+import com.example.backend.model.*;
+import com.example.backend.repo.*;
 import org.apache.coyote.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -17,11 +11,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import javax.swing.text.html.Option;
-import java.time.DayOfWeek;
-import java.time.Instant;
-import java.time.LocalDate;
+import java.time.*;
 import java.util.*;
 
 @RestController
@@ -35,6 +28,8 @@ public class TutorApisController {
     private Userrepo userrepo;
     @Autowired
     private SessionRepo sessionRepo;
+    @Autowired
+    private CompletedTuitionsRepo completedTuitionsRepo;
 
     @GetMapping("/get-students/{tutorId}")
     public List<Children> getAllStudents(@PathVariable String tutorId){
@@ -181,34 +176,139 @@ public class TutorApisController {
         }
     }
 
+
+    @GetMapping("/get-schedule/{childId}")
+    public ResponseEntity<?> getScheduleForChild(@PathVariable String childId) {
+        List<Schedule> list = schedulesRepo.findAllByChildId(childId);
+        if (list.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No schedule found"));
+        }
+        return ResponseEntity.ok(list.get(list.size() - 1));
+    }
+
     @PostMapping("/sessions/{sessionId}/start")
-    public ResponseEntity<?> startSession(@PathVariable String sessionId,Authentication authentication) {
+    public ResponseEntity<?> startSession(
+            @PathVariable String sessionId,
+            Authentication authentication) {
+
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "User not authenticated"));
         }
+
+        // 1. Identify the logged-in tutor
+        String email = authentication.getName();
+
+        Optional<Users> tutorOptional = userrepo.findByEmail(email);
+
+        if (tutorOptional.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Tutor not found"));
+        }
+
+        Users tutor = tutorOptional.get();
+
+        if (!"TUTOR".equalsIgnoreCase(tutor.getRole())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Only tutors can start sessions"));
+        }
+
+        // 2. Find the session
         Optional<Session> optionalSession = sessionRepo.findById(sessionId);
+
         if (optionalSession.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("message", "Session not found"));
         }
+
         Session session = optionalSession.get();
+
+        // 3. Verify session ownership
+        if (!tutor.getId().equals(session.getTutorId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "You cannot start another tutor's session"));
+        }
+
+        // 4. Verify session status
         if (session.getSessionStatus() != SessionStatus.UPCOMING) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("message", "Session cannot be started"));
         }
 
+        // 5. Start the session
         session.setActualStart(Instant.now());
         session.setSessionStatus(SessionStatus.IN_PROGRESS);
 
         sessionRepo.save(session);
-        return ResponseEntity.ok(
-                Map.of("message", "Session started successfully")
-        );
 
+        return ResponseEntity.ok(
+                Map.of(
+                        "message", "Session started successfully",
+                        "data", session
+                )
+        );
     }
 
-    @GetMapping("/get-today-schedules")
+
+    @PostMapping("/sessions/{sessionId}/end")
+    public ResponseEntity<?> endSession(
+            @PathVariable String sessionId,
+            Authentication authentication) {
+
+        // 1. Check authentication
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+
+        // 2. Identify the logged-in tutor
+        String email = authentication.getName();
+
+        Users tutor = userrepo.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Tutor not found"));
+
+        if (!"TUTOR".equalsIgnoreCase(tutor.getRole())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Only tutors can end sessions"));
+        }
+
+        // 3. Find the session
+        Optional<Session> optionalSession = sessionRepo.findById(sessionId);
+
+        if (optionalSession.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Session not found"));
+        }
+
+        Session session = optionalSession.get();
+
+        // 4. Verify session ownership
+        if (!tutor.getId().equals(session.getTutorId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "You cannot end another tutor's session"));
+        }
+
+        // 5. Only active sessions can be ended
+        if (session.getSessionStatus() != SessionStatus.IN_PROGRESS) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "Only active sessions can be ended"));
+        }
+
+        // 6. Record the end time and update status
+        session.setActualEnd(Instant.now());
+        session.setSessionStatus(SessionStatus.AWAITING_VERIFICATION);
+
+        // 7. Save the existing session document
+        Session savedSession = sessionRepo.save(session);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Session ended successfully. Awaiting parent verification.",
+                "data", savedSession
+        ));
+    }
+
+    @GetMapping("/get-today-sessions")
     public ResponseEntity<?> getTodaySchedules(Authentication authentication){
         if(authentication==null || !authentication.isAuthenticated()){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -230,32 +330,261 @@ public class TutorApisController {
         LocalDate todayDate = LocalDate.now();
         DayOfWeek todayDay = todayDate.getDayOfWeek();
 
-        //5. find only tutor accepted tuition details only
-        List<Schedule> acceptedTuitions =
-                schedulesRepo.findAllByTutorIdAndStatus(tutorId,"ACCEPTED");
-        System.out.println("Accepted Tuitions"+acceptedTuitions);
-        //6. among all tuitions find today scheduled tuitions only
-        List<Schedule> todaySchedules = acceptedTuitions.stream()
-                .filter(schedule ->
-                        schedule.getDaysOfWeek()!=null
-                        && schedule.getDaysOfWeek().contains(todayDay)
+        //5. find only tutor accepted tuition details only from the session table
+        List<Session> availableTuitions = sessionRepo.findAllByTutorId(tutorId);
+        if(availableTuitions==null || availableTuitions.isEmpty()){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "No sessions found, relax.."));
+        }
+        //6. Get today tuitions only
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        List<Session> todaySessions = availableTuitions.stream()
+                .filter(session ->
+                        session.getSessionDate()!=null
+                        && session.getSessionDate().equals(today)
                 )
-                .filter(schedule ->
-                        schedule.getEffectiveFrom()!=null
-                        && !todayDate.isBefore(schedule.getEffectiveFrom())
-                )
-                .filter(schedule ->
-                      schedule.getEffectiveTo()==null
-                      || !todayDate.isAfter(schedule.getEffectiveTo())
-                )
-                .sorted(Comparator.comparing(Schedule::getStartTime))
+                .sorted(Comparator.comparing(Session::getScheduleStart))
                 .toList();
-        System.out.println("Accepted Tuitions"+todaySchedules);
         return ResponseEntity.ok(Map.of(
-                "message", "Today's schedules fetched successfully",
-                "data", todaySchedules
-                )
-        );
+                "message", "Today's sessions fetched successfully",
+                "data", todaySessions
+        ));
+
     }
+
+    @GetMapping("/completed-tuitions")
+    public ResponseEntity<?> getTutorEarnings(Authentication authentication) {
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+
+        String email = authentication.getName();
+
+        Users tutor = userrepo.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Tutor not found"));
+
+        if (!"TUTOR".equalsIgnoreCase(tutor.getRole())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Only tutors can view their earnings"));
+        }
+
+        List<CompletedTuitions> completedTuitions =
+                completedTuitionsRepo.findAllByTutorId(tutor.getId());
+
+        List<Session> tutorSessions = sessionRepo.findAllByTutorId(tutor.getId());
+        if (tutorSessions != null) {
+            for (Session s : tutorSessions) {
+                if (s.getSessionStatus() == SessionStatus.APPROVED && completedTuitionsRepo.findBySessionId(s.getId()).isEmpty()) {
+                    double durationHours = (s.getCorrectedDurationMinutes() != null && s.getCorrectedDurationMinutes() > 0)
+                            ? (s.getCorrectedDurationMinutes() / 60.0)
+                            : ((s.getActualStart() != null && s.getActualEnd() != null)
+                                ? (java.time.Duration.between(s.getActualStart(), s.getActualEnd()).toSeconds() / 3600.0)
+                                : (s.getDurationMinutes() != null ? s.getDurationMinutes() / 60.0 : 0.0));
+                    if (durationHours > 0) {
+                        CompletedTuitions ct = new CompletedTuitions();
+                        ct.setChildId(s.getChildId());
+                        ct.setSessionId(s.getId());
+                        ct.setScheduleId(s.getScheduleId());
+                        ct.setTutorId(s.getTutorId());
+                        ct.setParentId(s.getParentId());
+                        ct.setSessionDate(s.getSessionDate());
+                        ct.setActualStart(s.getActualStart());
+                        ct.setActualEnd(s.getActualEnd());
+                        ct.setVerifiedDurationHours(durationHours);
+                        ct.setHourlyRate(s.getHourlyRate() != null ? s.getHourlyRate() : 0.0);
+                        ct.setEarnedAmount(durationHours * (s.getHourlyRate() != null ? s.getHourlyRate() : 0.0));
+                        ct.setReviewStatus("APPROVED");
+                        ct.setApprovedAt(Instant.now());
+                        completedTuitionsRepo.save(ct);
+                        completedTuitions.add(ct);
+                    }
+                }
+            }
+        }
+        
+        return ResponseEntity.ok(Map.of(
+                "message", "Tutor earnings fetched successfully",
+                "data", completedTuitions
+        ));
+    }
+
+    @PostMapping("/sessions/{sessionId}/dispute-response")
+    public ResponseEntity<?> respondToDispute(
+            @PathVariable String sessionId,
+            @RequestBody Map<String, String> payload,
+            Authentication authentication) {
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "User not authenticated"));
+        }
+
+        Users tutor = userrepo.findByEmail(authentication.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tutor not found"));
+
+        Session session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+
+        if (!tutor.getId().equals(session.getTutorId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Not your session"));
+        }
+
+        session.setTutorDisputeReason(payload.get("response"));
+        session.setTutorDisputeReasonAt(Instant.now());
+        Session saved = sessionRepo.save(session);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Dispute response recorded successfully",
+                "data", saved
+        ));
+    }
+
+    @PostMapping("/sessions/{sessionId}/reschedule")
+    public ResponseEntity<?> rescheduleSession(
+            @PathVariable String sessionId,
+            @RequestBody Map<String, String> payload,
+            Authentication authentication) {
+
+        // 1. Validate authenticated tutor
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Please log in"));
+        }
+
+        String email = authentication.getName();
+
+        Optional<Users> optionalUsers = userrepo.findByEmail(email);
+        if(optionalUsers.isEmpty()){
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "tutor not found"));
+
+        }
+        Users tutor = optionalUsers.get();
+        if (tutor == null || !"TUTOR".equalsIgnoreCase(tutor.getRole())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Only tutors can reschedule sessions"));
+        }
+
+        // 2. Find the individual session
+        Optional<Session> optionalSession = sessionRepo.findById(sessionId);
+
+        if (optionalSession.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Session not found"));
+        }
+
+        Session session = optionalSession.get();
+
+        // 3. Ensure this session belongs to the authenticated tutor
+        if (!tutor.getId().equals(session.getTutorId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "You cannot reschedule this session"));
+        }
+
+        // 4. Only upcoming sessions can be rescheduled
+        if (session.getSessionStatus() != SessionStatus.UPCOMING) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of(
+                            "message",
+                            "Only upcoming sessions can be rescheduled"
+                    ));
+        }
+
+        // 5. Validate the requested times
+        String start = payload.get("newStartTime");
+        String end = payload.get("newEndTime");
+
+        if (start == null || end == null
+                || start.isBlank() || end.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "Start and end times are required"));
+        }
+
+        try {
+            LocalTime newStartTime = LocalTime.parse(start);
+            LocalTime newEndTime = LocalTime.parse(end);
+
+            if (!newEndTime.isAfter(newStartTime)) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of(
+                                "message",
+                                "End time must be after start time"
+                        ));
+            }
+
+            // 6. Keep the original session date
+            LocalDate sessionDate = session.getSessionDate();
+
+            LocalDateTime newScheduleStart =
+                    LocalDateTime.of(sessionDate, newStartTime);
+
+            LocalDateTime newScheduleEnd =
+                    LocalDateTime.of(sessionDate, newEndTime);
+
+            // Do not allow a new start time in the past
+            LocalDateTime now = LocalDateTime.now(
+                    ZoneId.of("Asia/Kolkata")
+            );
+
+            if (newScheduleStart.isBefore(now)) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of(
+                                "message",
+                                "The new session time cannot be in the past"
+                        ));
+            }
+
+            // 7. Update this Session only
+            session.setScheduleStart(newScheduleStart);
+            session.setScheduleEnd(newScheduleEnd);
+
+            sessionRepo.save(session);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Session rescheduled successfully",
+                    "sessionId", session.getId(),
+                    "sessionDate", session.getSessionDate().toString(),
+                    "scheduleStart", newScheduleStart.toString(),
+                    "scheduleEnd", newScheduleEnd.toString(),
+                    "sessionStatus", session.getSessionStatus().name()
+            ));
+
+        } catch (java.time.format.DateTimeParseException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of(
+                            "message",
+                            "Invalid time format. Use HH:mm, for example 16:00"
+                    ));
+        }
+    }
+    @GetMapping("/get-tutor-history")
+    public ResponseEntity<?> getTutorHistory(Authentication authentication){
+        if(authentication==null || !authentication.isAuthenticated()){
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+        String tutor_email = authentication.getName();
+        Optional<Users> optionalUsers = userrepo.findByEmail(tutor_email);
+        if(optionalUsers.isEmpty()){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "User not found"));
+        }
+        Users tutor = optionalUsers.get();
+
+        List<SessionStatus> statuses = List.of(
+                SessionStatus.APPROVED,
+                SessionStatus.DISPUTED,
+                SessionStatus.AWAITING_VERIFICATION,
+                SessionStatus.MISSED
+        );
+        List<Session> history = sessionRepo.findByTutorIdAndSessionStatusInOrderByScheduleStartDesc(tutor.getId(),statuses);
+        return ResponseEntity.ok(Map.of(
+                "message", "tutor history fetched successfully",
+                "history", history
+        ));
+    }
+
 
 }

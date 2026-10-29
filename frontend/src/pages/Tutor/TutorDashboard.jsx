@@ -9,16 +9,24 @@ import {
   CalendarCheck,
   AlertCircle,
   RefreshCw,
+  Square,
+  X,
 } from "lucide-react";
 import MyStudents from "./MyStudent.jsx";
 import Requests from "./Requests.jsx";
 import TuitionCard from "./TuitionCard.jsx";
+import Earnings from "./Earnings.jsx";
+import HistorySection from "./History.jsx";
+import RescheduleModal from "./RescheduleModal.jsx";
 import {
-  getTodaySchedulesAPI,
   getParentDetailsAPI,
   getStudentDetailsAPI,
   getSubjectsByIdsAPI,
   getBoardByIdAPI,
+  startSessionAPI,
+  endSessionAPI,
+  getTodaySessionsAPI,
+  getCompletedTuitionsAPI,
 } from "../../API/api.js";
 
 const menuItems = [
@@ -32,41 +40,70 @@ const menuItems = [
 export default function TutorDashboard() {
   const [activeSection, setActiveSection] = useState("Overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [todaySchedules, setTodaySchedules] = useState([]);
-  const [loadingSchedules, setLoadingSchedules] = useState(true);
-  const [scheduleError, setScheduleError] = useState("");
+  const [todaySessions, setTodaySessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [sessionError, setSessionError] = useState("");
+  const [startingSessionId, setStartingSessionId] = useState(null);
+  const [endingSessionId, setEndingSessionId] = useState(null);
+  const [sessionToEnd, setSessionToEnd] = useState(null);
+  const [sessionToReschedule, setSessionToReschedule] = useState(null);
+  const [actionError, setActionError] = useState("");
 
-  async function fetchTodaySchedules() {
+  async function fetchTodaySessions(isInitial = false) {
     try {
-      setLoadingSchedules(true);
-      setScheduleError("");
+      if (isInitial) {
+        setLoadingSessions(true);
+      }
+      setSessionError("");
 
-      const response = await getTodaySchedulesAPI();
+      const [response, completedRes] = await Promise.all([
+        getTodaySessionsAPI(),
+        getCompletedTuitionsAPI().catch(() => null),
+      ]);
       const responseText = await response.text();
       let result = {};
       if (responseText && responseText.trim()) {
         try {
           result = JSON.parse(responseText);
         } catch (e) {
-          console.error("Failed to parse today schedules JSON:", e);
+          console.error("Failed to parse today sessions JSON:", e);
         }
       }
 
       if (!response.ok) {
-        throw new Error(result.message || "Failed to load today's schedules");
+        throw new Error(result.message || "Failed to load today's sessions");
       }
 
-      const schedules = Array.isArray(result.data) ? result.data : [];
+      const sessions = Array.isArray(result.data) ? result.data : [];
+
+      // Map completed tuitions for quick lookup by sessionId
+      const completedTuitionMap = new Map();
+      if (completedRes && completedRes.ok) {
+        try {
+          const compJson = await completedRes.json();
+          const compList = Array.isArray(compJson.data)
+            ? compJson.data
+            : Array.isArray(compJson)
+            ? compJson
+            : [];
+          compList.forEach((ct) => {
+            if (ct.sessionId) completedTuitionMap.set(String(ct.sessionId), ct);
+            if (ct.id) completedTuitionMap.set(String(ct.id), ct);
+          });
+        } catch (e) {
+          console.warn("Could not parse completed tuitions:", e);
+        }
+      }
 
       const enriched = await Promise.all(
-        schedules.map(async (schedule) => {
+        sessions.map(async (session) => {
           let parent = null;
           let student = null;
 
           // Fetch parent details
-          if (schedule.parentId) {
+          if (session.parentId) {
             try {
-              const pRes = await getParentDetailsAPI(schedule.parentId);
+              const pRes = await getParentDetailsAPI(session.parentId);
               if (pRes.ok) {
                 const pData = await pRes.json();
                 parent = pData.data ?? null;
@@ -77,9 +114,9 @@ export default function TutorDashboard() {
           }
 
           // Fetch student details
-          if (schedule.childId) {
+          if (session.childId) {
             try {
-              const sRes = await getStudentDetailsAPI(schedule.childId);
+              const sRes = await getStudentDetailsAPI(session.childId);
               if (sRes.ok) {
                 const sData = await sRes.json();
                 student = sData.data ?? null;
@@ -129,35 +166,154 @@ export default function TutorDashboard() {
             }
           }
 
+          const extractTime = (val) => {
+            if (!val) return "";
+            if (typeof val === "string") {
+              return val.includes("T") ? val.split("T")[1].slice(0, 5) : val;
+            }
+            if (Array.isArray(val) && val.length >= 5) {
+              const hours = String(val[3]).padStart(2, "0");
+              const minutes = String(val[4]).padStart(2, "0");
+              return `${hours}:${minutes}`;
+            }
+            return "";
+          };
+
+          const startTime = session.startTime || extractTime(session.scheduleStart);
+          const endTime = session.endTime || extractTime(session.scheduleEnd);
+          const sessionId = String(session.id || session._id || "");
+          const matchingCompleted = completedTuitionMap.get(sessionId) || null;
+
           return {
-            ...schedule,
-            id: schedule.id || schedule._id,
+            ...session,
+            id: session.id || session._id,
+            startTime,
+            endTime,
             student,
             parent,
-            subjects: student?.subjects || []
+            subjects: student?.subjects || [],
+            matchingCompleted,
           };
         })
       );
 
-      // Sort today's schedules by start time
+      // Sort today's sessions by start time
       enriched.sort((a, b) => {
         const timeA = a.startTime || "";
         const timeB = b.startTime || "";
         return timeA.localeCompare(timeB);
       });
 
-      setTodaySchedules(enriched);
+      setTodaySessions(enriched);
     } catch (err) {
-      console.error("Error fetching today's schedules:", err);
-      setScheduleError(err.message || "Failed to load today's schedules");
+      console.error("Error fetching today's sessions:", err);
+      setSessionError(err.message || "Failed to load today's sessions");
     } finally {
-      setLoadingSchedules(false);
+      setLoadingSessions(false);
     }
   }
 
   useEffect(() => {
-    fetchTodaySchedules();
+    fetchTodaySessions(true);
   }, []);
+
+  async function startTimer(session) {
+    if (!session?.id || startingSessionId) return;
+
+    try {
+      setStartingSessionId(session.id);
+      setActionError("");
+
+      const response = await startSessionAPI(session.id);
+      const responseText = await response.text();
+      let result = {};
+      if (responseText && responseText.trim()) {
+        try {
+          result = JSON.parse(responseText);
+        } catch (e) {
+          console.error("Failed to parse start session JSON:", e);
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to start session");
+      }
+
+      const startedAt = result.data?.actualStart || new Date().toISOString();
+
+      // Immediately update session in state so timer starts without delay
+      setTodaySessions((prev) =>
+        prev.map((s) =>
+          s.id === session.id
+            ? {
+                ...s,
+                sessionStatus: "IN_PROGRESS",
+                actualStart: startedAt,
+              }
+            : s
+        )
+      );
+
+      // Background refetch to ensure complete consistency with backend
+      await fetchTodaySessions(false);
+    } catch (error) {
+      console.error("Error in start timer:", error);
+      setActionError(error.message || "Failed to start session. Please try again.");
+    } finally {
+      setStartingSessionId(null);
+    }
+  }
+
+  async function handleConfirmEndSession(session) {
+    if (!session?.id || endingSessionId) return;
+
+    try {
+      setEndingSessionId(session.id);
+      setActionError("");
+
+      const response = await endSessionAPI(session.id);
+      const responseText = await response.text();
+      let result = {};
+      if (responseText && responseText.trim()) {
+        try {
+          result = JSON.parse(responseText);
+        } catch (e) {
+          console.error("Failed to parse end session JSON:", e);
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to end session");
+      }
+
+      const endedAt = result.data?.actualEnd || new Date().toISOString();
+
+      // Immediately update session in state to AWAITING_VERIFICATION and record actualEnd
+      setTodaySessions((prev) =>
+        prev.map((s) =>
+          s.id === session.id
+            ? {
+                ...s,
+                sessionStatus: "AWAITING_VERIFICATION",
+                actualEnd: endedAt,
+              }
+            : s
+        )
+      );
+
+      // Close the confirmation modal
+      setSessionToEnd(null);
+
+      // Background refetch to ensure complete consistency with backend
+      await fetchTodaySessions(false);
+    } catch (error) {
+      console.error("Error in end session:", error);
+      setActionError(error.message || "Failed to end session. Please try again.");
+      setSessionToEnd(null);
+    } finally {
+      setEndingSessionId(null);
+    }
+  }
 
   function handleLogout() {
     localStorage.removeItem("token");
@@ -265,7 +421,7 @@ export default function TutorDashboard() {
           <div className="mt-auto pt-6">
             <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
               <p className="text-xs font-semibold text-slate-800">
-                Tuition Schedule
+                Tuition Sessions
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
                 Keep class statuses updated so parents receive timely confirmations.
@@ -347,39 +503,56 @@ export default function TutorDashboard() {
                   </div>
                 </div>
 
+                {/* Action Error Banner */}
+                {actionError && (
+                  <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-xs">
+                    <div className="flex items-center gap-2.5">
+                      <AlertCircle size={18} className="shrink-0 text-rose-600" />
+                      <span>{actionError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActionError("")}
+                      className="rounded-lg px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100/70 transition"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
                 {/* Current Activity Section */}
-                {loadingSchedules ? (
+                {loadingSessions ? (
                   <div className="rounded-2xl border border-slate-200 bg-white p-10 sm:p-14 text-center shadow-xs">
                     <div className="flex flex-col items-center justify-center text-slate-400">
                       <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
                       <p className="mt-3 text-sm font-medium text-slate-500">
-                        Loading today&apos;s tuition schedule...
+                        Loading today&apos;s tuition sessions...
                       </p>
                     </div>
                   </div>
-                ) : scheduleError ? (
+                ) : sessionError ? (
                   <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center">
                     <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
                       <AlertCircle size={20} />
                     </div>
-                    <p className="text-sm font-medium text-rose-700">{scheduleError}</p>
+                    <p className="text-sm font-medium text-rose-700">{sessionError}</p>
                     <button
                       type="button"
-                      onClick={fetchTodaySchedules}
+                      onClick={() => fetchTodaySessions(true)}
                       className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition"
                     >
                       <RefreshCw size={13} />
                       Retry
                     </button>
                   </div>
-                ) : todaySchedules.length === 0 ? (
+                ) : todaySessions.length === 0 ? (
                   <div className="space-y-5">
                     <div>
                       <h2 className="text-2xl font-semibold text-slate-900">
                         Current Activity
                       </h2>
                       <p className="mt-1 text-sm text-slate-500">
-                        Your scheduled tuition sessions
+                        Your tuition sessions today
                       </p>
                     </div>
 
@@ -388,10 +561,10 @@ export default function TutorDashboard() {
                         <CalendarCheck size={26} strokeWidth={1.8} />
                       </div>
                       <h3 className="text-base font-semibold text-slate-900">
-                        No scheduled sessions today
+                        No tuition sessions today
                       </h3>
                       <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                        You don&apos;t have any tuition classes scheduled for today. Check your student roster or pending requests to review upcoming arrangements.
+                        You don&apos;t have any tuition sessions scheduled for today. Check your student roster or pending requests to review upcoming arrangements.
                       </p>
                       <button
                         type="button"
@@ -409,25 +582,29 @@ export default function TutorDashboard() {
                         Current Activity
                       </h2>
                       <p className="mt-1 text-sm text-slate-500">
-                        Your scheduled tuition sessions
+                        Your tuition sessions today
                       </p>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                      {todaySchedules.map((item) => (
+                      {todaySessions.map((session) => (
                         <TuitionCard
-                          key={item.id}
-                          schedule={item}
-                          student={item.student}
-                          parent={item.parent}
-                          subjects={item.subjects}
-                          onStartTimer={(schedule) => {
-                            // Connect your start-session logic here.
-                            console.log("Start timer:", schedule.id);
+                          key={session.id}
+                          session={session}
+                          schedule={session}
+                          student={session.student}
+                          parent={session.parent}
+                          subjects={session.subjects}
+                          isStarting={startingSessionId === session.id}
+                          isEnding={endingSessionId === session.id}
+                          onStartTimer={(session) => {
+                            startTimer(session);
                           }}
-                          onReschedule={(schedule) => {
-                            // Open your reschedule modal here.
-                            console.log("Reschedule:", schedule.id);
+                          onEndSession={(session) => {
+                            setSessionToEnd(session);
+                          }}
+                          onReschedule={(session) => {
+                            setSessionToReschedule(session);
                           }}
                         />
                       ))}
@@ -446,49 +623,13 @@ export default function TutorDashboard() {
 
             {activeSection === "History" && (
               <section>
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                    Session History
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    View records and attendance of past tuition classes.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 sm:p-12 text-center shadow-xs">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100/60">
-                    <History size={26} strokeWidth={1.8} />
-                  </div>
-                  <h3 className="text-base font-semibold text-slate-900">
-                    No session history yet
-                  </h3>
-                  <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                    Completed tuition classes and attendance logs will appear here as sessions finish.
-                  </p>
-                </div>
+                <HistorySection />
               </section>
             )}
 
             {activeSection === "Earnings & Payments" && (
               <section>
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                    Earnings & Payments
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Track your tuition payments, monthly compensation, and invoices.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 sm:p-12 text-center shadow-xs">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100/60">
-                    <Wallet size={26} strokeWidth={1.8} />
-                  </div>
-                  <h3 className="text-base font-semibold text-slate-900">
-                    No payment records yet
-                  </h3>
-                  <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                    Compensation details and tuition billing records will appear here as active sessions are processed.
-                  </p>
-                </div>
+                <Earnings />
               </section>
             )}
 
@@ -538,6 +679,84 @@ export default function TutorDashboard() {
           })}
         </div>
       </nav>
+
+      {/* End Session Confirmation Modal */}
+      {sessionToEnd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="relative my-auto w-full max-w-md overflow-hidden rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600 border border-rose-100/80 shadow-2xs">
+                  <AlertCircle size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    End Tuition Session?
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {sessionToEnd.student?.name ? `Student: ${sessionToEnd.student.name}` : "Confirm session completion"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={endingSessionId === sessionToEnd.id}
+                onClick={() => setSessionToEnd(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition disabled:opacity-50"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-600 leading-relaxed mb-6">
+              Are you sure you want to end this tuition session? The timer will stop, and the completed duration will be submitted as <span className="font-semibold text-slate-800">Awaiting Verification</span> for the parent to review.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                disabled={endingSessionId === sessionToEnd.id}
+                onClick={() => setSessionToEnd(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={endingSessionId === sessionToEnd.id}
+                onClick={() => handleConfirmEndSession(sessionToEnd)}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-rose-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {endingSessionId === sessionToEnd.id ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <span>Ending Session...</span>
+                  </>
+                ) : (
+                  <>
+                    <Square size={14} className="fill-white" />
+                    <span>Yes, End Session</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule One-Day Session Modal */}
+      {sessionToReschedule && (
+        <RescheduleModal
+          session={sessionToReschedule}
+          isOpen={Boolean(sessionToReschedule)}
+          onClose={() => setSessionToReschedule(null)}
+          onSuccess={() => {
+            fetchTodaySessions();
+            setSessionToReschedule(null);
+          }}
+        />
+      )}
     </div>
   );
 }

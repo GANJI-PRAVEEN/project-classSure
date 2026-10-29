@@ -25,6 +25,10 @@ public class ParentApisController {
     private Userrepo userrepo;
     @Autowired
     private SchedulesRepo schedulesRepo;
+    @Autowired
+    private SessionRepo sessionRepo;
+    @Autowired
+    private CompletedTuitionsRepo completedTuitionsRepo;
 
     @PostMapping("/add-child")
     public ResponseEntity<?> saveChildren(@RequestBody Children children, Authentication authentication) {
@@ -195,14 +199,7 @@ public class ParentApisController {
         return ResponseEntity.ok(schedulesRepo.findAll());
     }
 
-    @GetMapping("/get-schedule/{childId}")
-    public ResponseEntity<?> getScheduleForChild(@PathVariable String childId) {
-        List<Schedule> list = schedulesRepo.findAllByChildId(childId);
-        if (list.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No schedule found"));
-        }
-        return ResponseEntity.ok(list.get(list.size() - 1));
-    }
+
 
     @DeleteMapping("/delete-child/{childId}")
     public ResponseEntity<?> deleteChild(@PathVariable String childId, Authentication authentication) {
@@ -224,6 +221,62 @@ public class ParentApisController {
         }
         return ResponseEntity.ok(Map.of("message", "Child deleted successfully"));
     }
+
+    @GetMapping("/get-parent-history")
+    public ResponseEntity<?> getHistory(Authentication authentication){
+        if(authentication==null || !authentication.isAuthenticated()){
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+        String parent_email = authentication.getName();
+        Optional<Users> optionalUsers = userrepo.findByEmail(parent_email);
+        if(optionalUsers.isEmpty()){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "User not found"));
+        }
+        Users parent = optionalUsers.get();
+        List<Session> sessionList = sessionRepo.findAllByParentIdOrderBySessionDate(parent.getId());
+        List<CompletedTuitions> completedTuitionsList =
+                completedTuitionsRepo.findAllByParentIdOrderBySessionDate(parent.getId());
+
+        if (sessionList != null) {
+            for (Session s : sessionList) {
+                if (s.getSessionStatus() == com.example.backend.enums.SessionStatus.APPROVED && completedTuitionsRepo.findBySessionId(s.getId()).isEmpty()) {
+                    double durationHours = (s.getCorrectedDurationMinutes() != null && s.getCorrectedDurationMinutes() > 0)
+                            ? (s.getCorrectedDurationMinutes() / 60.0)
+                            : ((s.getActualStart() != null && s.getActualEnd() != null)
+                                ? (java.time.Duration.between(s.getActualStart(), s.getActualEnd()).toSeconds() / 3600.0)
+                                : (s.getDurationMinutes() != null ? s.getDurationMinutes() / 60.0 : 0.0));
+                    if (durationHours > 0) {
+                        CompletedTuitions ct = new CompletedTuitions();
+                        ct.setChildId(s.getChildId());
+                        ct.setSessionId(s.getId());
+                        ct.setScheduleId(s.getScheduleId());
+                        ct.setTutorId(s.getTutorId());
+                        ct.setParentId(s.getParentId());
+                        ct.setSessionDate(s.getSessionDate());
+                        ct.setActualStart(s.getActualStart());
+                        ct.setActualEnd(s.getActualEnd());
+                        ct.setVerifiedDurationHours(durationHours);
+                        ct.setHourlyRate(s.getHourlyRate() != null ? s.getHourlyRate() : 0.0);
+                        ct.setEarnedAmount(durationHours * (s.getHourlyRate() != null ? s.getHourlyRate() : 0.0));
+                        ct.setReviewStatus("APPROVED");
+                        ct.setApprovedAt(java.time.Instant.now());
+                        completedTuitionsRepo.save(ct);
+                        completedTuitionsList.add(ct);
+                    }
+                }
+            }
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Parent history fetched successfully",
+                "sessions", sessionList,
+                "completedTuitions", completedTuitionsList
+        ));
+    }
+
+    
 
 
 }

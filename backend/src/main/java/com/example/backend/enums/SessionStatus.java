@@ -5,5 +5,6 @@ public enum SessionStatus {
     IN_PROGRESS,
     AWAITING_VERIFICATION,
     APPROVED,
-    DISPUTED
+    DISPUTED,
+    MISSED
 }

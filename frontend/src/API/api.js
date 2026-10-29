@@ -117,7 +117,7 @@ export async function getSchedulesAPI() {
 }
 
 export async function getScheduleByChildIdAPI(childId) {
-    return fetch(`${BASE_URL}/api/parent/get-schedule/${childId}`, {
+    return fetch(`${BASE_URL}/api/tutor/get-schedule/${childId}`, {
         method: "GET",
         headers: {
             ...getAuthHeader()
@@ -189,11 +189,256 @@ export function calculateSessionEarnings(hourlyRate, verifiedPayableMinutes) {
     return Number(((rate * minutes) / 60).toFixed(2));
 }
 
-export async function getTodaySchedulesAPI() {
-    return fetch(`${BASE_URL}/api/tutor/get-today-schedules`, {
+export async function getTodaySessionsAPI() {
+    return fetch(`${BASE_URL}/api/tutor/get-today-sessions`, {
         method: "GET",
         headers: {
             ...getAuthHeader()
         }
     });
 }
+export async function startSessionAPI(sessionId) {
+    return fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/start`, {
+        method: "POST",
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+}
+export async function endSessionAPI(sessionId) {
+    return fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/end`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader()
+        }
+    });
+}
+
+export async function getPendingReviewSessionsAPI() {
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/review/pending-sessions`, {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        });
+        if (res.status !== 404) {
+            return res;
+        }
+    } catch {
+        // Fall back to /review/pending-sessions
+    }
+    return fetch(`${BASE_URL}/review/pending-sessions`, {
+        method: "GET",
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+}
+
+export async function getReviewHistoryAPI() {
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/review/history`, {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        });
+        if (res.status !== 404) {
+            return res;
+        }
+    } catch {
+        // Fall back
+    }
+    return fetch(`${BASE_URL}/review/history`, {
+        method: "GET",
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+}
+
+export async function approveSessionAPI(sessionId, payload = null) {
+    const options = {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader()
+        },
+        ...(payload ? { body: JSON.stringify(payload) } : {})
+    };
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/approve`, options);
+        if (res.status !== 404) return res;
+    } catch {
+        // Fall back to /review/sessions/${sessionId}/approve
+    }
+    return fetch(`${BASE_URL}/review/sessions/${sessionId}/approve`, options);
+}
+
+export async function correctSessionDurationAPI(sessionId, payload) {
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/correct-duration`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify(payload)
+        });
+        if (res.status !== 404) return res;
+    } catch {
+        // Fall back to /review/sessions/${sessionId}/correct-duration
+    }
+    return fetch(`${BASE_URL}/review/sessions/${sessionId}/correct-duration`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader()
+        },
+        body: JSON.stringify(payload)
+    });
+}
+
+export async function disputeSessionAPI(sessionId, payload) {
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/dispute`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify(payload)
+        });
+        if (res.status !== 404) return res;
+    } catch {
+        // Fall back to /review/sessions/${sessionId}/dispute
+    }
+    return fetch(`${BASE_URL}/review/sessions/${sessionId}/dispute`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader()
+        },
+        body: JSON.stringify(payload)
+    });
+}
+
+export async function getCompletedTuitionsAPI() {
+    return fetch(`${BASE_URL}/api/tutor/completed-tuitions`, {
+        method: "GET",
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+}
+
+export async function getParentHistoryAPI() {
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/get-parent-history`, {
+            method: "GET",
+            headers: {
+                ...getAuthHeader(),
+            },
+        });
+        if (res.status !== 404) {
+            return res;
+        }
+    } catch {
+    }
+    return fetch(`${BASE_URL}/parent/get-parent-history`, {
+        method: "GET",
+        headers: {
+            ...getAuthHeader(),
+        },
+    });
+}
+
+export async function getTutorHistoryAPI() {
+    try {
+        const res = await fetch(`${BASE_URL}/api/tutor/get-tutor-history`, {
+            method: "GET",
+            headers: {
+                ...getAuthHeader(),
+            },
+        });
+        if (res.status !== 404) {
+            return res;
+        }
+    } catch {
+        // Fall back to alternative routes if network or routing differs
+    }
+}
+
+export async function submitTutorDisputeResponseAPI(sessionId, payload) {
+    try {
+        const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/dispute-response`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+            },
+            body: JSON.stringify(payload),
+        });
+        if (res.status !== 404) {
+            return res;
+        }
+    } catch {
+        // Fall back
+    }
+
+    try {
+        const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/respond-dispute`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+            },
+            body: JSON.stringify(payload),
+        });
+        if (res.status !== 404) {
+            return res;
+        }
+    } catch {
+        // Fall back
+    }
+
+    return fetch(`${BASE_URL}/api/tutor/dispute-response`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader(),
+        },
+        body: JSON.stringify({ sessionId, ...payload }),
+    });
+}
+
+export async function rescheduleSessionAPI(sessionId, payload) {
+    try {
+        const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/reschedule`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+            },
+            body: JSON.stringify(payload),
+        });
+        if (res.status !== 405) {
+            return res;
+        }
+    } catch {
+        // Fall through to PUT
+    }
+
+    return fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/reschedule`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader(),
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+

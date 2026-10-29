@@ -1,48 +1,121 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Users, Clock, GraduationCap } from "lucide-react";
-import { getAllTutorStudentsAPI, getScheduleByChildIdAPI } from "../../API/api";
-
+import { Users, Clock } from "lucide-react";
+import {
+  getAllTutorStudentsAPI,
+  getScheduleByChildIdAPI,
+  getParentDetailsAPI,
+  getSubjectsByIdsAPI,
+  getBoardByIdAPI,
+} from "../../API/api";
+import StudentDetailModal from "./StudentDetailModal.jsx";
 
 function MyStudents() {
-  const navigate = useNavigate();
-
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
   useEffect(() => {
-    const currentUser = JSON.parse(localStorage.getItem("user"));
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    if (!currentUser?.id) {
+      setLoading(false);
+      setError("User session not found. Please log in again.");
+      return;
+    }
+
     const loadStudents = async () => {
       try {
         setLoading(true);
+        setError("");
         const res = await getAllTutorStudentsAPI(currentUser.id);
-        console.log("Res", res);
         if (res.ok) {
           const data = await res.json();
-          console.log("Students data", data);
+          const studentList = Array.isArray(data) ? data : [];
+
           const enriched = await Promise.all(
-            (Array.isArray(data) ? data : []).map(async (student) => {
+            studentList.map(async (student) => {
               const childId = student.id ?? student._id;
-              if (!student.schedule && childId) {
+              let schedule = student.schedule;
+
+              // 1. Fetch schedule if not already present
+              if (!schedule && childId) {
                 try {
                   const sRes = await getScheduleByChildIdAPI(childId);
                   if (sRes.ok) {
-                    const sData = await sRes.json();
-                    return { ...student, schedule: sData };
+                    schedule = await sRes.json();
                   }
                 } catch {
                   // ignore
                 }
               }
-              return student;
+
+              // 2. Resolve subjects if IDs are present
+              let subjectNames = Array.isArray(student.subjects)
+                ? student.subjects
+                : [];
+              if (
+                subjectNames.length === 0 &&
+                Array.isArray(student.subjectIds) &&
+                student.subjectIds.length > 0
+              ) {
+                try {
+                  const subRes = await getSubjectsByIdsAPI(student.subjectIds);
+                  if (subRes.ok) {
+                    const subData = await subRes.json();
+                    if (Array.isArray(subData)) {
+                      subjectNames = subData.map(
+                        (s) => s.name ?? s.subjectName
+                      );
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+
+              // 3. Resolve board name if board ID is present
+              let boardName = student.board || "";
+              if (boardName) {
+                try {
+                  const bRes = await getBoardByIdAPI(boardName);
+                  if (bRes.ok) {
+                    const bData = await bRes.json();
+                    boardName = bData.name ?? bData.boardName ?? boardName;
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+
+              // 4. Resolve parent details if parentId is present
+              let parent = student.parent || null;
+              if (!parent && student.parentId) {
+                try {
+                  const pRes = await getParentDetailsAPI(student.parentId);
+                  if (pRes.ok) {
+                    const pData = await pRes.json();
+                    parent = pData.data ?? pData;
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+
+              return {
+                ...student,
+                schedule,
+                subjects: subjectNames,
+                board: boardName,
+                parent,
+              };
             })
           );
           setStudents(enriched);
         } else {
           setError("Failed to load students");
         }
-      } catch (error) {
+      } catch (err) {
+        console.error("Error loading students:", err);
         setError("Failed to load students");
       } finally {
         setLoading(false);
@@ -118,7 +191,24 @@ function MyStudents() {
           {students.map((student) => {
             const studentId = student.id ?? student._id;
             const schedule = student.schedule;
-            const status = schedule?.status;
+            const rawStatus = schedule?.status || student?.status;
+            const normalizedStatus = rawStatus?.toUpperCase();
+            const isAccepted =
+              normalizedStatus === "ACCEPTED" ||
+              normalizedStatus === "ACTIVE" ||
+              normalizedStatus === "APPROVED";
+            const isPending = normalizedStatus === "PENDING";
+            const isRejected = normalizedStatus === "REJECTED";
+
+            const statusText = isAccepted
+              ? normalizedStatus === "ACTIVE"
+                ? "Active"
+                : "Accepted"
+              : isPending
+                ? "Pending"
+                : isRejected
+                  ? "Rejected"
+                  : rawStatus || "No Schedule";
 
             return (
               <div
@@ -147,27 +237,27 @@ function MyStudents() {
                     {/* Schedule Status Badge */}
                     <span
                       className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border ${
-                        status === "ACTIVE"
+                        isAccepted
                           ? "border-emerald-200/80 bg-emerald-50 text-emerald-700"
-                          : status === "PENDING"
-                          ? "border-amber-200/80 bg-amber-50 text-amber-700"
-                          : status === "REJECTED"
-                          ? "border-rose-200/80 bg-rose-50 text-rose-700"
-                          : "border-slate-200 bg-slate-50 text-slate-600"
+                          : isPending
+                            ? "border-amber-200/80 bg-amber-50 text-amber-700"
+                            : isRejected
+                              ? "border-rose-200/80 bg-rose-50 text-rose-700"
+                              : "border-slate-200 bg-slate-50 text-slate-600"
                       }`}
                     >
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          status === "ACTIVE"
+                          isAccepted
                             ? "bg-emerald-500"
-                            : status === "PENDING"
-                            ? "bg-amber-500"
-                            : status === "REJECTED"
-                            ? "bg-rose-500"
-                            : "bg-slate-400"
+                            : isPending
+                              ? "bg-amber-500"
+                              : isRejected
+                                ? "bg-rose-500"
+                                : "bg-slate-400"
                         }`}
                       />
-                      {status || "No Schedule"}
+                      {statusText}
                     </span>
                   </div>
 
@@ -240,9 +330,8 @@ function MyStudents() {
                 <div className="mt-5 pt-3 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => navigate(`/tutor/my-students/${studentId}`)}
-                    disabled={!studentId}
-                    className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-blue-700 active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => setSelectedStudent(student)}
+                    className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-blue-700 active:scale-[0.99] transition-all"
                   >
                     View Details
                   </button>
@@ -252,6 +341,13 @@ function MyStudents() {
           })}
         </div>
       )}
+
+      {/* View Detail Dialog */}
+      <StudentDetailModal
+        student={selectedStudent}
+        isOpen={Boolean(selectedStudent)}
+        onClose={() => setSelectedStudent(null)}
+      />
     </div>
   );
 }

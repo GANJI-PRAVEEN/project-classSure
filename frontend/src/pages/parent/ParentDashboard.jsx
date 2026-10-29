@@ -9,8 +9,12 @@ import {
   ClipboardCheck,
   Wallet,
   LogOut,
+  History as HistoryIcon,
 } from "lucide-react";
 import MyChildren from "./MyChildren";
+import Review from "./Review";
+import HistorySection from "./History";
+import TodaysTuitions from "./TodaysTuitions";
 
 export default function ParentDashboard() {
   const navigate = useNavigate();
@@ -20,6 +24,7 @@ export default function ParentDashboard() {
   const menuItems = [
     { label: "Current Activities", shortLabel: "Activities", icon: CalendarDays },
     { label: "My Children", shortLabel: "Children", icon: Users },
+    { label: "History", shortLabel: "History", icon: HistoryIcon },
     { label: "Reviews", shortLabel: "Reviews", icon: ClipboardCheck },
     { label: "Payments", shortLabel: "Payments", icon: Wallet },
   ];
@@ -144,35 +149,7 @@ export default function ParentDashboard() {
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 pb-28 lg:pb-8">
           <div className="mx-auto max-w-6xl">
             {activeSection === "Current Activities" && (
-              <section>
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                    Current Activities
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Track today's tuition schedules and ongoing learning sessions.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 sm:p-12 text-center shadow-xs">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100/60">
-                    <CalendarDays size={26} strokeWidth={1.8} />
-                  </div>
-                  <h3 className="text-base font-semibold text-slate-900">
-                    No schedules to display today
-                  </h3>
-                  <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                    Your scheduled tuition sessions will appear here once approved by your assigned tutor.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSection("My Children")}
-                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
-                  >
-                    View Children & Schedules →
-                  </button>
-                </div>
-              </section>
+              <TodaysTuitions onNavigateToTab={setActiveSection} />
             )}
 
             {activeSection === "My Children" && (
@@ -181,27 +158,15 @@ export default function ParentDashboard() {
               </section>
             )}
 
+            {activeSection === "History" && (
+              <section>
+                <HistorySection />
+              </section>
+            )}
+
             {activeSection === "Reviews" && (
               <section>
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                    Reviews & Feedback
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    View feedback and performance evaluations from your children's tutors.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 sm:p-12 text-center shadow-xs">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100/60">
-                    <ClipboardCheck size={26} strokeWidth={1.8} />
-                  </div>
-                  <h3 className="text-base font-semibold text-slate-900">
-                    No reviews available yet
-                  </h3>
-                  <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                    Tutor feedback reports and progress evaluations will be listed here after tuition sessions are completed.
-                  </p>
-                </div>
+                <Review />
               </section>
             )}
 
@@ -238,7 +203,7 @@ export default function ParentDashboard() {
         className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-4px_20px_rgba(0,0,0,0.04)] lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
-        <div className="grid grid-cols-4 h-16">
+        <div className="grid grid-cols-5 h-16">
           {menuItems.map(({ label, shortLabel, icon: Icon }) => {
             const isActive = activeSection === label;
 
