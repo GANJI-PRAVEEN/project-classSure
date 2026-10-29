@@ -26,35 +26,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.customUserDetails=customUserDetails;
     }
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         String authHeader = request.getHeader("Authorization");
 
-
-        System.out.println("JWT FILTER EXECUTED");
-        System.out.println("Request URI: " + request.getRequestURI());
-        System.out.println("Authorization header present: " + authHeader);
-
-
+        log.debug("JWT filter processing request URI: {}, auth header present: {}", request.getRequestURI(), authHeader != null);
 
         if(authHeader==null || !authHeader.startsWith("Bearer ")){
             filterChain.doFilter(request,response);
-//            System.out.println("Response status after filter chain: " + response.getStatus());
             return;
         }
 
         String token = authHeader.substring(7);
         try {
-
             String email = jwtService.extractEmail(token);
-            System.out.println("JWT email extracted: " + email);
             if(email!=null && SecurityContextHolder.getContext().getAuthentication()==null){
                 UserDetails userDetails =
                         customUserDetails.loadUserByUsername(email);
-                System.out.println("User: " + userDetails.getUsername());
-                System.out.println("Authorities: " + userDetails.getAuthorities());
                 if(jwtService.isTokenValid(token,userDetails.getUsername())){
-                    System.out.println("Token valid");
                     UsernamePasswordAuthenticationToken authenticationToken =
                                                         new UsernamePasswordAuthenticationToken(
                                                                 userDetails,
@@ -66,7 +57,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         catch (JwtException | UsernameNotFoundException e){
-            System.out.println("erorr"+e);
+            log.warn("JWT authentication rejected for request {}: {}", request.getRequestURI(), e.getMessage());
+            SecurityContextHolder.clearContext();
+        }
+        catch (Exception e){
+            log.error("Error occurred during JWT authentication processing for {}: {}", request.getRequestURI(), e.getMessage());
             SecurityContextHolder.clearContext();
         }
         filterChain.doFilter(request,response);

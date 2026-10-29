@@ -22,14 +22,9 @@ build/
 !.env.example
 *.key
 *.pem
-backend/src/main/resources/application.properties
-backend/src/main/resources/application-*.properties
-backend/src/main/resources/application.yml
-backend/src/main/resources/application-*.yml
-**/application.properties
-**/application-*.properties
-**/application.yml
-**/application-*.yml
+backend/src/main/resources/application-secret.properties
+backend/src/main/resources/application-secret.yml
+
 
 # IDE / Editor Files
 .idea/

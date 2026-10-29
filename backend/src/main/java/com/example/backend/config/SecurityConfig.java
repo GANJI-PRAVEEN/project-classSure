@@ -1,6 +1,7 @@
 package com.example.backend.config;
 
 import com.example.backend.service.CustomUserDetails;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -51,8 +52,13 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOrigins(
-                List.of("https://project-class-sure.vercel.app")
+        config.setAllowedOriginPatterns(
+                List.of(
+                        "https://project-class-sure.vercel.app",
+                        "https://project-class-sure-*.vercel.app",
+                        "http://localhost:*",
+                        "http://127.0.0.1:*"
+                )
         );
 
         config.setAllowedMethods(
@@ -60,6 +66,7 @@ public class SecurityConfig {
         );
 
         config.setAllowedHeaders(List.of("*"));
+        config.setExposedHeaders(List.of("Authorization"));
 
         // Enable only if your frontend uses cookies or credentialed requests.
         config.setAllowCredentials(true);
@@ -92,6 +99,10 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                        // Allow error dispatches and error endpoint so underlying exceptions are not masked as 403
+                        .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
+                        .requestMatchers("/error").permitAll()
+
                         // Allow CORS preflight requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 

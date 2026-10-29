@@ -47,9 +47,14 @@ export default function Login() {
       console.log("Response Text", responseText);
 
       if (!response.ok) {
-        throw new Error(
-          responseText || "Invalid email or password."
-        );
+        let errorMsg = "Invalid email or password.";
+        try {
+          const errJson = JSON.parse(responseText);
+          errorMsg = errJson.message || errJson.error || responseText;
+        } catch {
+          errorMsg = responseText || "Invalid email or password.";
+        }
+        throw new Error(errorMsg);
       }
 
       // Assuming your backend returns the JWT as a JSON string.
