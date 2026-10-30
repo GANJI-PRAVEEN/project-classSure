@@ -1,5 +1,6 @@
 package com.example.backend.controller;
 
+import com.example.backend.enums.SessionStatus;
 import com.example.backend.model.*;
 import com.example.backend.repo.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,9 +12,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/parent")
@@ -222,6 +224,72 @@ public class ParentApisController {
         return ResponseEntity.ok(Map.of("message", "Child deleted successfully"));
     }
 
+    @GetMapping({"/get-today-sessions", "/current-activities", "/today-sessions"})
+    public ResponseEntity<?> getParentTodaySessions(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+        String parentEmail = authentication.getName();
+        Optional<Users> optionalParent = userrepo.findByEmail(parentEmail);
+        if (optionalParent.isEmpty()) {
+            optionalParent = userrepo.findByEmailIgnoreCase(parentEmail);
+        }
+        if (optionalParent.isEmpty()) {
+            return ResponseEntity.ok(Map.of(
+                    "message", "Parent not found",
+                    "data", Collections.emptyList()
+            ));
+        }
+
+        Users parent = optionalParent.get();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+
+        // Ensure sessions exist for today for any accepted schedules of this parent
+        List<Schedule> allSchedules = schedulesRepo.findAllByParentId(parent.getId());
+        if (allSchedules != null) {
+            for (Schedule schedule : allSchedules) {
+                if ("ACCEPTED".equalsIgnoreCase(schedule.getStatus())) {
+                    if (schedule.getDaysOfWeek() != null && schedule.getDaysOfWeek().contains(today.getDayOfWeek())) {
+                        if (schedule.getEffectiveFrom() != null && !today.isBefore(schedule.getEffectiveFrom())) {
+                            if (schedule.getEffectiveTo() == null || !today.isAfter(schedule.getEffectiveTo())) {
+                                boolean exists = sessionRepo.existsByScheduleIdAndSessionDate(schedule.getId(), today);
+                                if (!exists) {
+                                    Session session = new Session();
+                                    session.setScheduleId(schedule.getId());
+                                    session.setTutorId(schedule.getTutorId());
+                                    session.setParentId(schedule.getParentId());
+                                    session.setChildId(schedule.getChildId());
+                                    session.setSessionDate(today);
+                                    if (schedule.getStartTime() != null) {
+                                        session.setScheduleStart(LocalDateTime.of(today, schedule.getStartTime()));
+                                    }
+                                    if (schedule.getEndTime() != null) {
+                                        session.setScheduleEnd(LocalDateTime.of(today, schedule.getEndTime()));
+                                    }
+                                    session.setHourlyRate(schedule.getHourlyRate());
+                                    session.setSessionStatus(SessionStatus.UPCOMING);
+                                    sessionRepo.save(session);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        List<Session> allSessions = sessionRepo.findAllByParentIdOrderBySessionDate(parent.getId());
+        List<Session> todaySessions = (allSessions == null ? Collections.<Session>emptyList() : allSessions).stream()
+                .filter(session -> session.getSessionDate() != null && session.getSessionDate().equals(today))
+                .sorted(Comparator.comparing(Session::getScheduleStart, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Today's sessions fetched successfully",
+                "data", todaySessions
+        ));
+    }
+
     @GetMapping("/get-parent-history")
     public ResponseEntity<?> getHistory(Authentication authentication){
         if(authentication==null || !authentication.isAuthenticated()){
@@ -231,40 +299,54 @@ public class ParentApisController {
         String parent_email = authentication.getName();
         Optional<Users> optionalUsers = userrepo.findByEmail(parent_email);
         if(optionalUsers.isEmpty()){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message", "User not found"));
+            optionalUsers = userrepo.findByEmailIgnoreCase(parent_email);
+        }
+        if(optionalUsers.isEmpty()){
+            return ResponseEntity.ok(Map.of(
+                    "message", "User not found",
+                    "sessions", Collections.emptyList(),
+                    "completedTuitions", Collections.emptyList()
+            ));
         }
         Users parent = optionalUsers.get();
         List<Session> sessionList = sessionRepo.findAllByParentIdOrderBySessionDate(parent.getId());
+        if (sessionList == null) {
+            sessionList = new ArrayList<>();
+        } else {
+            sessionList = new ArrayList<>(sessionList);
+        }
         List<CompletedTuitions> completedTuitionsList =
                 completedTuitionsRepo.findAllByParentIdOrderBySessionDate(parent.getId());
+        if (completedTuitionsList == null) {
+            completedTuitionsList = new ArrayList<>();
+        } else {
+            completedTuitionsList = new ArrayList<>(completedTuitionsList);
+        }
 
-        if (sessionList != null) {
-            for (Session s : sessionList) {
-                if (s.getSessionStatus() == com.example.backend.enums.SessionStatus.APPROVED && completedTuitionsRepo.findBySessionId(s.getId()).isEmpty()) {
-                    double durationHours = (s.getCorrectedDurationMinutes() != null && s.getCorrectedDurationMinutes() > 0)
-                            ? (s.getCorrectedDurationMinutes() / 60.0)
-                            : ((s.getActualStart() != null && s.getActualEnd() != null)
-                                ? (java.time.Duration.between(s.getActualStart(), s.getActualEnd()).toSeconds() / 3600.0)
-                                : (s.getDurationMinutes() != null ? s.getDurationMinutes() / 60.0 : 0.0));
-                    if (durationHours > 0) {
-                        CompletedTuitions ct = new CompletedTuitions();
-                        ct.setChildId(s.getChildId());
-                        ct.setSessionId(s.getId());
-                        ct.setScheduleId(s.getScheduleId());
-                        ct.setTutorId(s.getTutorId());
-                        ct.setParentId(s.getParentId());
-                        ct.setSessionDate(s.getSessionDate());
-                        ct.setActualStart(s.getActualStart());
-                        ct.setActualEnd(s.getActualEnd());
-                        ct.setVerifiedDurationHours(durationHours);
-                        ct.setHourlyRate(s.getHourlyRate() != null ? s.getHourlyRate() : 0.0);
-                        ct.setEarnedAmount(durationHours * (s.getHourlyRate() != null ? s.getHourlyRate() : 0.0));
-                        ct.setReviewStatus("APPROVED");
-                        ct.setApprovedAt(java.time.Instant.now());
-                        completedTuitionsRepo.save(ct);
-                        completedTuitionsList.add(ct);
-                    }
+        for (Session s : sessionList) {
+            if (s.getSessionStatus() == SessionStatus.APPROVED && completedTuitionsRepo.findBySessionId(s.getId()).isEmpty()) {
+                double durationHours = (s.getCorrectedDurationMinutes() != null && s.getCorrectedDurationMinutes() > 0)
+                        ? (s.getCorrectedDurationMinutes() / 60.0)
+                        : ((s.getActualStart() != null && s.getActualEnd() != null)
+                            ? (java.time.Duration.between(s.getActualStart(), s.getActualEnd()).toSeconds() / 3600.0)
+                            : (s.getDurationMinutes() != null ? s.getDurationMinutes() / 60.0 : 0.0));
+                if (durationHours > 0) {
+                    CompletedTuitions ct = new CompletedTuitions();
+                    ct.setChildId(s.getChildId());
+                    ct.setSessionId(s.getId());
+                    ct.setScheduleId(s.getScheduleId());
+                    ct.setTutorId(s.getTutorId());
+                    ct.setParentId(s.getParentId());
+                    ct.setSessionDate(s.getSessionDate());
+                    ct.setActualStart(s.getActualStart());
+                    ct.setActualEnd(s.getActualEnd());
+                    ct.setVerifiedDurationHours(durationHours);
+                    ct.setHourlyRate(s.getHourlyRate() != null ? s.getHourlyRate() : 0.0);
+                    ct.setEarnedAmount(durationHours * (s.getHourlyRate() != null ? s.getHourlyRate() : 0.0));
+                    ct.setReviewStatus("APPROVED");
+                    ct.setApprovedAt(java.time.Instant.now());
+                    completedTuitionsRepo.save(ct);
+                    completedTuitionsList.add(ct);
                 }
             }
         }

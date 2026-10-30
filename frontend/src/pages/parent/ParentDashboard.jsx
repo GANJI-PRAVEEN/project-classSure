@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Menu,
   X,
+  LayoutDashboard,
   CalendarDays,
   Users,
   ClipboardCheck,
@@ -15,14 +16,15 @@ import MyChildren from "./MyChildren";
 import Review from "./Review";
 import HistorySection from "./History";
 import TodaysTuitions from "./TodaysTuitions";
+import ParentOverview from "./ParentOverview";
 
 export default function ParentDashboard() {
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState("Current Activities");
+  const [activeSection, setActiveSection] = useState("Overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const menuItems = [
-    { label: "Current Activities", shortLabel: "Activities", icon: CalendarDays },
+    { label: "Overview", shortLabel: "Overview", icon: LayoutDashboard },
     { label: "My Children", shortLabel: "Children", icon: Users },
     { label: "History", shortLabel: "History", icon: HistoryIcon },
     { label: "Reviews", shortLabel: "Reviews", icon: ClipboardCheck },
@@ -59,9 +61,9 @@ export default function ParentDashboard() {
             <nav className="hidden items-center gap-1 md:flex">
               <button
                 type="button"
-                onClick={() => setActiveSection("Current Activities")}
+                onClick={() => setActiveSection("Overview")}
                 className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
-                  activeSection === "Current Activities"
+                  activeSection === "Overview" || activeSection === "Current Activities"
                     ? "text-blue-600 bg-blue-50/70"
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                 }`}
@@ -148,8 +150,8 @@ export default function ParentDashboard() {
         {/* Main Content Area */}
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 pb-28 lg:pb-8">
           <div className="mx-auto max-w-6xl">
-            {activeSection === "Current Activities" && (
-              <TodaysTuitions onNavigateToTab={setActiveSection} />
+            {(activeSection === "Overview" || activeSection === "Current Activities") && (
+              <ParentOverview onNavigateToTab={setActiveSection} />
             )}
 
             {activeSection === "My Children" && (

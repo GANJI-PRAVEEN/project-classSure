@@ -308,7 +308,7 @@ public class TutorApisController {
         ));
     }
 
-    @GetMapping("/get-today-sessions")
+    @GetMapping({"/get-today-sessions", "/current-activities", "/today-sessions"})
     public ResponseEntity<?> getTodaySchedules(Authentication authentication){
         if(authentication==null || !authentication.isAuthenticated()){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -316,40 +316,73 @@ public class TutorApisController {
         }
         //1. get logged in tutor email
         String email = authentication.getName();
-        //2. fetch his details to get the id
+        //2. fetch details to get the id (case-insensitive fallback)
         Optional<Users> tutor = userrepo.findByEmail(email);
         if(tutor.isEmpty()){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message","tutor not found"));
+            tutor = userrepo.findByEmailIgnoreCase(email);
+        }
+        if(tutor.isEmpty()){
+            return ResponseEntity.ok(Map.of(
+                    "message", "Tutor not found",
+                    "data", Collections.emptyList()
+            ));
         }
 
         //3. find tutor id
         String tutorId = tutor.get().getId();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
 
-        //4.find today date and day
-        LocalDate todayDate = LocalDate.now();
-        DayOfWeek todayDay = todayDate.getDayOfWeek();
+        //4. Ensure today's sessions exist for any accepted schedules of this tutor
+        List<Schedule> acceptedSchedules = schedulesRepo.findAllByTutorIdAndStatus(tutorId, "ACCEPTED");
+        if (acceptedSchedules != null) {
+            for (Schedule schedule : acceptedSchedules) {
+                if (schedule.getDaysOfWeek() != null && schedule.getDaysOfWeek().contains(today.getDayOfWeek())) {
+                    if (schedule.getEffectiveFrom() != null && !today.isBefore(schedule.getEffectiveFrom())) {
+                        if (schedule.getEffectiveTo() == null || !today.isAfter(schedule.getEffectiveTo())) {
+                            boolean exists = sessionRepo.existsByScheduleIdAndSessionDate(schedule.getId(), today);
+                            if (!exists) {
+                                Session session = new Session();
+                                session.setScheduleId(schedule.getId());
+                                session.setTutorId(schedule.getTutorId());
+                                session.setParentId(schedule.getParentId());
+                                session.setChildId(schedule.getChildId());
+                                session.setSessionDate(today);
+                                if (schedule.getStartTime() != null) {
+                                    session.setScheduleStart(LocalDateTime.of(today, schedule.getStartTime()));
+                                }
+                                if (schedule.getEndTime() != null) {
+                                    session.setScheduleEnd(LocalDateTime.of(today, schedule.getEndTime()));
+                                }
+                                session.setHourlyRate(schedule.getHourlyRate());
+                                session.setSessionStatus(SessionStatus.UPCOMING);
+                                sessionRepo.save(session);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-        //5. find only tutor accepted tuition details only from the session table
+        //5. find only tutor accepted tuition details from the session table
         List<Session> availableTuitions = sessionRepo.findAllByTutorId(tutorId);
         if(availableTuitions==null || availableTuitions.isEmpty()){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message", "No sessions found, relax.."));
+            return ResponseEntity.ok(Map.of(
+                    "message", "No sessions found",
+                    "data", Collections.emptyList()
+            ));
         }
         //6. Get today tuitions only
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
         List<Session> todaySessions = availableTuitions.stream()
                 .filter(session ->
                         session.getSessionDate()!=null
                         && session.getSessionDate().equals(today)
                 )
-                .sorted(Comparator.comparing(Session::getScheduleStart))
+                .sorted(Comparator.comparing(Session::getScheduleStart, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
         return ResponseEntity.ok(Map.of(
                 "message", "Today's sessions fetched successfully",
                 "data", todaySessions
         ));
-
     }
 
     @GetMapping("/completed-tuitions")

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Users, X, Clock } from "lucide-react";
+import { Plus, Users, X, Clock, Trash2, GraduationCap, AlertCircle, RefreshCw } from "lucide-react";
 
 import {
   getAllChildrensAPI,
@@ -96,8 +96,60 @@ function formatDate(dateStr) {
   }
 }
 
+function MyChildrenSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-wider text-blue-600 bg-blue-50/70 border border-blue-100 rounded-xl px-3.5 py-2.5 w-fit">
+        <div className="h-4 w-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+        <span>Loading children & schedules...</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
+        {[1, 2, 3].map((n) => (
+          <div
+            key={n}
+            className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-6 shadow-xs animate-pulse"
+          >
+            <div>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="h-11 w-11 shrink-0 rounded-xl bg-slate-200" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 w-28 sm:w-36 rounded-md bg-slate-200" />
+                    <div className="h-3 w-20 rounded-md bg-slate-100" />
+                  </div>
+                </div>
+                <div className="h-6 w-24 rounded-full bg-slate-200 shrink-0" />
+              </div>
+
+              <div className="space-y-3.5 border-t border-slate-100 pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="h-14 rounded-xl bg-slate-100" />
+                  <div className="h-14 rounded-xl bg-slate-100" />
+                </div>
+                <div className="h-12 rounded-xl bg-slate-100" />
+                <div className="space-y-1.5">
+                  <div className="h-3 w-16 rounded bg-slate-200" />
+                  <div className="flex gap-1.5">
+                    <div className="h-6 w-16 rounded-lg bg-slate-100" />
+                    <div className="h-6 w-20 rounded-lg bg-slate-100" />
+                  </div>
+                </div>
+                <div className="h-28 rounded-xl bg-slate-100 mt-2" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function MyChildren() {
   const [children, setChildren] = useState([]);
+  const [loadingChildren, setLoadingChildren] = useState(true);
+  const [childToDelete, setChildToDelete] = useState(null);
+  const [deletingChild, setDeletingChild] = useState(false);
+
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(initialFormData);
 
@@ -123,9 +175,33 @@ export default function MyChildren() {
   const [effectiveTo, setEffectiveTo] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
 
+  async function handleDeleteChild(childId, childName) {
+    setChildToDelete({ id: childId, name: childName });
+  }
+
+  async function confirmDeleteChild() {
+    if (!childToDelete) return;
+    setDeletingChild(true);
+    try {
+      const res = await deleteChildAPI(childToDelete.id);
+      if (res.ok) {
+        setChildren((prev) => prev.filter((c) => String(c.id ?? c._id) !== String(childToDelete.id)));
+        setChildToDelete(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to delete child record.");
+      }
+    } catch (err) {
+      console.error("Delete child failed:", err);
+      alert("Network error while deleting child.");
+    } finally {
+      setDeletingChild(false);
+    }
+  }
 
   // Load children with their enriched static names and schedules
   async function loadChildrensData() {
+    setLoadingChildren(true);
     try {
       const [res, schedRes] = await Promise.all([
         getAllChildrensAPI(),
@@ -232,6 +308,8 @@ export default function MyChildren() {
       }
     } catch (error) {
       console.error("Fetching children failed", error);
+    } finally {
+      setLoadingChildren(false);
     }
   }
 
@@ -643,10 +721,12 @@ export default function MyChildren() {
         </p>
       )}
 
-      {/* Children list */}
-      {children.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 sm:p-14 text-center shadow-xs">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100/60">
+      {/* Loading state (Issue 4) */}
+      {loadingChildren ? (
+        <MyChildrenSkeleton />
+      ) : children.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 sm:p-14 text-center shadow-xs">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100/60 shadow-xs">
             <Users size={26} strokeWidth={1.8} />
           </div>
           <h2 className="text-base font-semibold text-slate-900">No children added yet</h2>
@@ -674,7 +754,7 @@ export default function MyChildren() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
           {children.map((child) => {
             const schedule = child.schedule;
             const isPending = schedule?.status === "PENDING";
@@ -683,95 +763,128 @@ export default function MyChildren() {
             return (
               <div
                 key={child.id ?? child._id}
-                className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-200"
+                className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 lg:p-6 shadow-xs hover:shadow-md transition-all duration-200"
               >
                 <div>
-                  {/* Header */}
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                  {/* Header: Responsive on Phones and Laptop */}
+                  <div className="mb-3.5 flex flex-col xs:flex-row sm:flex-col lg:flex-row items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1 w-full">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 font-bold text-base shadow-xs">
                         {child.name?.charAt(0)?.toUpperCase() ?? "S"}
                       </div>
-                      <div className="min-w-0">
-                        <h2 className="font-semibold text-slate-900 text-base leading-snug truncate">
+                      <div className="min-w-0 flex-1">
+                        <h2 className="font-bold text-slate-900 text-base leading-snug break-words">
                           {child.name}
                         </h2>
-                        <p className="text-xs font-medium text-slate-500 truncate">
-                          {child.grade || "No grade specified"}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {child.grade && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                              <GraduationCap size={12} className="text-slate-500 shrink-0" />
+                              <span className="truncate max-w-[120px]">{child.grade}</span>
+                            </span>
+                          )}
+                          {child.board && (
+                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 truncate max-w-[100px]">
+                              {child.board}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {schedule ? (
-                      <span
-                        className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border ${isPending
-                          ? "border-amber-200/80 bg-amber-50 text-amber-700"
-                          : isActive
-                            ? "border-emerald-200/80 bg-emerald-50 text-emerald-700"
-                            : "border-slate-200 bg-slate-50 text-slate-700"
-                          }`}
-                      >
+                    {/* Status badge & Actions */}
+                    <div className="flex items-center justify-between w-full xs:w-auto sm:w-full lg:w-auto pt-1 xs:pt-0 border-t xs:border-t-0 sm:border-t lg:border-t-0 border-slate-100 gap-2 shrink-0">
+                      {schedule ? (
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${isPending
-                            ? "bg-amber-500"
-                            : isActive
-                              ? "bg-emerald-500"
-                              : "bg-slate-400"
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border shadow-2xs ${
+                            isPending
+                              ? "border-amber-200/80 bg-amber-50 text-amber-800"
+                              : isActive
+                              ? "border-emerald-200/80 bg-emerald-50 text-emerald-800"
+                              : "border-slate-200 bg-slate-50 text-slate-700"
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isPending
+                                ? "bg-amber-500 animate-pulse"
+                                : isActive
+                                ? "bg-emerald-500"
+                                : "bg-slate-400"
                             }`}
-                        />
-                        {isPending ? "Pending Approval" : isActive ? "Active" : schedule.status}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500">
-                        No Schedule
-                      </span>
-                    )}
+                          />
+                          <span>{isPending ? "Pending Approval" : isActive ? "Active" : schedule.status}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500">
+                          No Schedule
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteChild(child.id ?? child._id, child.name)}
+                        className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        title="Delete Child"
+                        aria-label={`Delete ${child.name}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Details */}
-                  <div className="space-y-3.5 border-t border-slate-100 pt-4 text-sm">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                          Education category
+                  {/* Body Details */}
+                  <div className="space-y-3 border-t border-slate-100 pt-3.5 text-sm">
+                    {/* Category & Board grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Education Category
                         </p>
-                        <p className="font-medium text-slate-800 text-xs sm:text-sm truncate mt-0.5">
+                        <p className="font-semibold text-slate-800 mt-0.5 break-words">
                           {child.educationCategory || "Not specified"}
                         </p>
                       </div>
 
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                          Board
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Board / Curriculum
                         </p>
-                        <p className="font-medium text-slate-800 text-xs sm:text-sm truncate mt-0.5">
+                        <p className="font-semibold text-slate-800 mt-0.5 break-words">
                           {child.board || "Not specified"}
                         </p>
                       </div>
                     </div>
 
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                        Assigned Tutor
-                      </p>
-                      <p className="font-medium text-slate-800 text-xs sm:text-sm mt-0.5 flex items-center gap-1.5 truncate">
-                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0" />
-                        <span className={child.tutorName ? "text-slate-900" : "text-slate-400 italic"}>
-                          {child.tutorName || "No tutor assigned"}
-                        </span>
-                      </p>
+                    {/* Assigned Tutor */}
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 flex items-center justify-between gap-2 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Assigned Tutor
+                        </p>
+                        <p className="font-semibold text-slate-900 mt-0.5 truncate flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0" />
+                          <span className={child.tutorName ? "text-slate-900" : "text-slate-400 italic"}>
+                            {child.tutorName || "No tutor assigned"}
+                          </span>
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-md bg-blue-50 border border-blue-100/80 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                        Tutor
+                      </span>
                     </div>
 
+                    {/* Subjects */}
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                        Subjects
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                        Enrolled Subjects
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {(child.subjects ?? []).length > 0 ? (
                           child.subjects.map((name, idx) => (
                             <span
                               key={idx}
-                              className="inline-flex items-center rounded-full border border-blue-200/60 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
+                              className="inline-flex items-center rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
                             >
                               {name}
                             </span>
@@ -783,53 +896,78 @@ export default function MyChildren() {
                     </div>
 
                     {/* Schedule Timings Section */}
-                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 mt-2">
-                      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                        <Clock size={13} className="text-blue-600" />
-                        <span>Tuition Schedule</span>
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 sm:p-3.5 mt-2">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
+                          <Clock size={14} className="text-blue-600" />
+                          <span>Weekly Schedule</span>
+                        </div>
+                        {schedule?.hourlyRate != null && schedule.hourlyRate > 0 && (
+                          <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs">
+                            ₹{schedule.hourlyRate}/hr
+                          </span>
+                        )}
                       </div>
 
                       {schedule ? (
-                        <div className="space-y-1.5 text-xs">
-                          {schedule.hourlyRate != null && schedule.hourlyRate > 0 && (
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="text-slate-500 shrink-0">Hourly Rate:</span>
-                              <span className="font-semibold text-slate-900 text-right">
-                                ₹{schedule.hourlyRate}/hr
+                        <div className="space-y-2 text-xs">
+                          {/* Class Days Pills */}
+                          <div>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-1">
+                              Class Days
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map((d) => {
+                                const isClassDay = Array.isArray(schedule.daysOfWeek) &&
+                                  schedule.daysOfWeek.map((day) => String(day).toUpperCase()).includes(d);
+                                const shortDay = d.slice(0, 3);
+                                return (
+                                  <span
+                                    key={d}
+                                    className={`inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold transition ${
+                                      isClassDay
+                                        ? "bg-blue-600 text-white shadow-2xs"
+                                        : "bg-slate-100 text-slate-400 opacity-60"
+                                    }`}
+                                  >
+                                    {shortDay}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Timings & Dates */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                            <div>
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                                Timings (IST)
+                              </span>
+                              <span className="font-semibold text-slate-800 text-xs">
+                                {formatTime(schedule.startTime)} – {formatTime(schedule.endTime)}
                               </span>
                             </div>
-                          )}
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-slate-500 shrink-0">Class Days:</span>
-                            <span className="font-medium text-slate-800 text-right">
-                              {formatDays(schedule.daysOfWeek) || "Not specified"}
-                            </span>
-                          </div>
 
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-slate-500 shrink-0">Timings:</span>
-                            <span className="font-medium text-slate-800 text-right">
-                              {formatTime(schedule.startTime)} – {formatTime(schedule.endTime)}
-                            </span>
-                          </div>
-
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-slate-500 shrink-0">Effective:</span>
-                            <span className="font-medium text-slate-800 text-right">
-                              {formatDate(schedule.effectiveFrom)} →{" "}
-                              {schedule.effectiveTo ? formatDate(schedule.effectiveTo) : "Ongoing"}
-                            </span>
+                            <div>
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                                Effective Dates
+                              </span>
+                              <span className="font-medium text-slate-700 text-xs">
+                                {formatDate(schedule.effectiveFrom)} →{" "}
+                                {schedule.effectiveTo ? formatDate(schedule.effectiveTo) : "Ongoing"}
+                              </span>
+                            </div>
                           </div>
 
                           {isPending && (
-                            <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center gap-1.5 text-[11px] font-medium text-amber-700">
-                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                              <span>Schedule pending tutor approval</span>
+                            <div className="mt-2 pt-2 border-t border-amber-200/60 flex items-center gap-1.5 text-[11px] font-medium text-amber-800">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                              <span>Awaiting tutor confirmation</span>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <p className="text-xs italic text-slate-400">No schedule available</p>
+                        <p className="text-xs italic text-slate-400">No schedule assigned yet</p>
                       )}
                     </div>
                   </div>
@@ -837,6 +975,39 @@ export default function MyChildren() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Delete Child Confirmation Dialog */}
+      {childToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center animate-in fade-in zoom-in-95">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 border border-rose-100">
+              <Trash2 size={22} />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">Delete Child Record?</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Are you sure you want to delete <span className="font-semibold text-slate-800">{childToDelete.name}</span>? This will also remove any associated schedules.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={deletingChild}
+                onClick={() => setChildToDelete(null)}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingChild}
+                onClick={confirmDeleteChild}
+                className="flex-1 rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-xs hover:bg-rose-700 disabled:opacity-60 transition"
+              >
+                {deletingChild ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

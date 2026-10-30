@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import {
+  getParentTodaySessionsAPI,
   getParentHistoryAPI,
   getAllChildrensAPI,
   getSchedulesAPI,
@@ -550,32 +551,43 @@ export default function TodaysTuitions({ onNavigateToTab }) {
       const todayKolkataDateStr = getTodayKolkataDateStr();
       const todayKolkataDay = getTodayKolkataDayOfWeek();
 
-      // 1. Fetch parent's tuition sessions using the existing tuition history API
-      const historyRes = await getParentHistoryAPI();
-
-      if (historyRes.status === 401) {
-        throw new Error("Your login session has expired. Please log in again.");
-      }
-
-      if (!historyRes.ok) {
-        let errMsg = "Failed to load tuition details.";
-        try {
-          const errBody = await historyRes.json();
-          if (errBody?.message) errMsg = errBody.message;
-        } catch {
-          // ignore
+      // 1. Fetch parent's tuition sessions using today-sessions API or history API
+      let allSessions = [];
+      try {
+        let historyRes = await getParentTodaySessionsAPI();
+        if (historyRes.status === 404 || !historyRes.ok) {
+          historyRes = await getParentHistoryAPI();
         }
-        throw new Error(errMsg);
-      }
 
-      const historyData = await historyRes.json();
-      const allSessions = Array.isArray(historyData?.sessions)
-        ? historyData.sessions
-        : Array.isArray(historyData?.data)
-        ? historyData.data
-        : Array.isArray(historyData)
-        ? historyData
-        : [];
+        if (historyRes.status === 401) {
+          throw new Error("Your login session has expired. Please log in again.");
+        }
+
+        if (historyRes.ok) {
+          const historyData = await historyRes.json();
+          allSessions = Array.isArray(historyData?.data)
+            ? historyData.data
+            : Array.isArray(historyData?.sessions)
+            ? historyData.sessions
+            : Array.isArray(historyData)
+            ? historyData
+            : [];
+        } else if (historyRes.status !== 404) {
+          let errMsg = "Failed to load tuition details.";
+          try {
+            const errBody = await historyRes.json();
+            if (errBody?.message) errMsg = errBody.message;
+          } catch {
+            // ignore
+          }
+          throw new Error(errMsg);
+        }
+      } catch (sessErr) {
+        if (sessErr.message?.includes("expired")) {
+          throw sessErr;
+        }
+        console.warn("Could not load sessions, will fallback to active schedules:", sessErr);
+      }
 
       // 2. Fetch parent's children (source of student names, grades, board, and subjectIds)
       const childrenMap = new Map();

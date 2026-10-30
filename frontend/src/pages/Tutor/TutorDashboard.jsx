@@ -71,6 +71,11 @@ export default function TutorDashboard() {
       }
 
       if (!response.ok) {
+        if (response.status === 404) {
+          setTodaySessions([]);
+          setLoadingSessions(false);
+          return;
+        }
         throw new Error(result.message || "Failed to load today's sessions");
       }
 

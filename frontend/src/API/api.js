@@ -198,6 +198,15 @@ export async function getTodaySessionsAPI() {
         }
     });
 }
+
+export async function getParentTodaySessionsAPI() {
+    return fetch(`${BASE_URL}/api/parent/get-today-sessions`, {
+        method: "GET",
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+}
 export async function startSessionAPI(sessionId) {
     return fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/start`, {
         method: "POST",
@@ -336,19 +345,7 @@ export async function getCompletedTuitionsAPI() {
 }
 
 export async function getParentHistoryAPI() {
-    try {
-        const res = await fetch(`${BASE_URL}/api/parent/get-parent-history`, {
-            method: "GET",
-            headers: {
-                ...getAuthHeader(),
-            },
-        });
-        if (res.status !== 404) {
-            return res;
-        }
-    } catch {
-    }
-    return fetch(`${BASE_URL}/parent/get-parent-history`, {
+    return fetch(`${BASE_URL}/api/parent/get-parent-history`, {
         method: "GET",
         headers: {
             ...getAuthHeader(),
