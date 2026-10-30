@@ -144,6 +144,15 @@ export async function getTutorPendingRequestAPI() {
     });
 }
 
+export async function getTutorSchedulesAPI() {
+    return fetch(`${BASE_URL}/api/tutor/get-schedules`, {
+        method: "GET",
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+}
+
 export async function getParentDetailsAPI(parentId) {
     return fetch(`${BASE_URL}/api/tutor/get-parent-details/${parentId}`, {
         method: "GET",

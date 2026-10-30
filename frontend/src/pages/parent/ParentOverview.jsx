@@ -15,7 +15,6 @@ import {
   ShieldCheck,
   CalendarCheck,
   Check,
-  Calendar as CalendarIcon,
 } from "lucide-react";
 import {
   getParentTodaySessionsAPI,
@@ -50,27 +49,7 @@ function formatElapsedTime(elapsedMs) {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-function formatTime(timeStr) {
-  if (!timeStr) return "";
-  const parts = String(timeStr).split(":");
-  let hours = parseInt(parts[0], 10);
-  const minutes = parts[1] ? parts[1].slice(0, 2) : "00";
-  if (isNaN(hours)) return timeStr;
-  const ampm = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12;
-  hours = hours ? hours : 12;
-  return `${hours}:${minutes} ${ampm}`;
-}
 
-const DAYS_ORDER = [
-  { key: "MONDAY", label: "Monday", short: "Mon" },
-  { key: "TUESDAY", label: "Tuesday", short: "Tue" },
-  { key: "WEDNESDAY", label: "Wednesday", short: "Wed" },
-  { key: "THURSDAY", label: "Thursday", short: "Thu" },
-  { key: "FRIDAY", label: "Friday", short: "Fri" },
-  { key: "SATURDAY", label: "Saturday", short: "Sat" },
-  { key: "SUNDAY", label: "Sunday", short: "Sun" },
-];
 
 export default function ParentOverview({ onNavigateToTab }) {
   const [loading, setLoading] = useState(true);
@@ -461,33 +440,7 @@ export default function ParentOverview({ onNavigateToTab }) {
     return (minutes / 60).toFixed(1);
   }, [schedules]);
 
-  // Map schedules by day of week for the Weekly Timetable Widget
-  const weeklyScheduleMap = useMemo(() => {
-    const map = new Map();
-    DAYS_ORDER.forEach((d) => map.set(d.key, []));
 
-    schedules
-      .filter((s) => s.status === "ACCEPTED")
-      .forEach((sched) => {
-        if (!Array.isArray(sched.daysOfWeek)) return;
-        const child = children.find((c) => String(c.id ?? c._id) === String(sched.childId));
-        sched.daysOfWeek.forEach((dayKey) => {
-          const upperDay = String(dayKey).toUpperCase();
-          if (map.has(upperDay)) {
-            map.get(upperDay).push({
-              ...sched,
-              studentName: child?.name || "Student",
-              grade: child?.grade || "",
-              subjects: child?.subjects || [],
-            });
-          }
-        });
-      });
-
-    return map;
-  }, [schedules, children]);
-
-  const todayDayKey = getTodayKolkataDayOfWeek();
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -807,7 +760,6 @@ export default function ParentOverview({ onNavigateToTab }) {
                 </h3>
                 <p className="mx-auto mt-1 max-w-md text-xs sm:text-sm text-slate-500">
                   Enjoy your day! None of your enrolled children have tuitions scheduled for today ({todayKolkataDay}).
-                  Review the weekly timetable below to see upcoming classes.
                 </p>
               </div>
             ) : (
@@ -956,78 +908,7 @@ export default function ParentOverview({ onNavigateToTab }) {
             )}
           </section>
 
-          {/* Weekly Timetable Matrix Widget (At-a-Glance Timetable for Parents) */}
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                <CalendarIcon size={19} className="text-indigo-600" />
-                <span>Weekly Tuition Timetable</span>
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-500">
-                Weekly recurring schedule overview across all enrolled children
-              </p>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
-              {DAYS_ORDER.map(({ key, label, short }) => {
-                const daySchedules = weeklyScheduleMap.get(key) || [];
-                const isToday = key === todayDayKey;
-
-                return (
-                  <div
-                    key={key}
-                    className={`flex flex-col rounded-2xl border p-3.5 transition ${
-                      isToday
-                        ? "border-blue-400 bg-blue-50/40 ring-2 ring-blue-500/20 shadow-xs"
-                        : "border-slate-200/80 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
-                      <span className="font-bold text-xs uppercase tracking-wider text-slate-700">
-                        {short}
-                      </span>
-                      {isToday ? (
-                        <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">
-                          Today
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-medium text-slate-400">
-                          {daySchedules.length}
-                        </span>
-                      )}
-                    </div>
-
-                    {daySchedules.length === 0 ? (
-                      <p className="text-[11px] italic text-slate-400 my-auto text-center py-4">
-                        No class
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {daySchedules.map((item, idx) => (
-                          <div
-                            key={idx}
-                            className="rounded-xl border border-slate-200/90 bg-white p-2 text-xs shadow-2xs"
-                          >
-                            <p className="font-bold text-slate-900 truncate">
-                              {item.studentName}
-                            </p>
-                            <p className="text-[11px] font-semibold text-blue-700 mt-0.5 truncate">
-                              {formatTime(item.startTime)} – {formatTime(item.endTime)}
-                            </p>
-                            {item.subjects && item.subjects.length > 0 && (
-                              <p className="text-[10px] text-slate-500 truncate mt-0.5">
-                                {item.subjects.join(", ")}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
 
           {/* Academic Integrity & Tracking Guarantee footer */}
           <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-r from-slate-50 via-white to-slate-50 p-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

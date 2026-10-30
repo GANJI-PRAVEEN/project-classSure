@@ -186,6 +186,24 @@ public class TutorApisController {
         return ResponseEntity.ok(list.get(list.size() - 1));
     }
 
+    @GetMapping({"/get-schedules", "/schedules"})
+    public ResponseEntity<?> getTutorSchedules(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+        String email = authentication.getName();
+        Optional<Users> tutor = userrepo.findByEmail(email);
+        if (tutor.isEmpty()) {
+            tutor = userrepo.findByEmailIgnoreCase(email);
+        }
+        if (tutor.isEmpty()) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+        List<Schedule> list = schedulesRepo.findAllByTutorIdAndStatus(tutor.get().getId(), "ACCEPTED");
+        return ResponseEntity.ok(list != null ? list : Collections.emptyList());
+    }
+
     @PostMapping("/sessions/{sessionId}/start")
     public ResponseEntity<?> startSession(
             @PathVariable String sessionId,
