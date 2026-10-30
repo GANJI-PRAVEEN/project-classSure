@@ -55,6 +55,48 @@ export async function deleteChildAPI(childId) {
     });
 }
 
+export async function updateChildAPI(childId, childrenPayload) {
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/update-child/${childId}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify(childrenPayload)
+        });
+        if (res.ok) return res;
+        return await fetch(`${BASE_URL}/api/parent/add-child`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify({ ...childrenPayload, id: childId })
+        });
+    } catch {
+        return await fetch(`${BASE_URL}/api/parent/add-child`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify({ ...childrenPayload, id: childId })
+        });
+    }
+}
+
+export async function updateScheduleAPI(scheduleId, schedulePayload) {
+    return fetch(`${BASE_URL}/api/parent/update-schedule/${scheduleId}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader()
+        },
+        body: JSON.stringify(schedulePayload)
+    });
+}
+
 export async function getEducationCategoryByIdAPI(id) {
     return fetch(`${BASE_URL}/static_data/education_category_id`, {
         method: "POST",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Users, X, Clock, Trash2, GraduationCap, AlertCircle, RefreshCw } from "lucide-react";
+import { Plus, Users, X, Clock, Trash2, GraduationCap, AlertCircle, RefreshCw, Pencil } from "lucide-react";
 
 import {
   getAllChildrensAPI,
@@ -7,6 +7,8 @@ import {
   getStaticSubjectsDataAPI,
   validateTutorAPI,
   saveChildAPI,
+  updateChildAPI,
+  updateScheduleAPI,
   deleteChildAPI,
   getEducationCategoryByIdAPI,
   getSubjectsByIdsAPI,
@@ -149,6 +151,7 @@ export default function MyChildren() {
   const [loadingChildren, setLoadingChildren] = useState(true);
   const [childToDelete, setChildToDelete] = useState(null);
   const [deletingChild, setDeletingChild] = useState(false);
+  const [editingChild, setEditingChild] = useState(null);
 
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(initialFormData);
@@ -174,6 +177,46 @@ export default function MyChildren() {
   const [effectiveFrom, setEffectiveFrom] = useState("");
   const [effectiveTo, setEffectiveTo] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
+
+  function handleOpenEdit(child) {
+    setEditingChild(child);
+    const catId = child.rawEducationCategoryId || child.educationCategory || "";
+    const matchedCat = categories.find(
+      (c) => String(getId(c)) === String(catId) || getName(c) === child.educationCategory
+    );
+    const educationCategory = matchedCat ? getId(matchedCat) : catId;
+
+    setFormData({
+      studentName: child.name || "",
+      tutorEmail: child.tutorEmail || child.tutor?.email || "",
+      educationCategory: educationCategory,
+      board: child.rawBoardId || child.board || "",
+      grade: child.grade || "",
+      subjects: child.rawSubjectIds || child.subjectIds || [],
+    });
+
+    if (child.schedule) {
+      setDaysOfWeek(Array.isArray(child.schedule.daysOfWeek) ? child.schedule.daysOfWeek : []);
+      setStartTime(child.schedule.startTime || "");
+      setEndTime(child.schedule.endTime || "");
+      setEffectiveFrom(child.schedule.effectiveFrom || "");
+      setEffectiveTo(child.schedule.effectiveTo || "");
+      setHourlyRate(
+        child.schedule.hourlyRate != null ? String(child.schedule.hourlyRate) : ""
+      );
+    } else {
+      setDaysOfWeek([]);
+      setStartTime("");
+      setEndTime("");
+      setEffectiveFrom("");
+      setEffectiveTo("");
+      setHourlyRate("");
+    }
+
+    setErrors({});
+    setMessage("");
+    setShowForm(true);
+  }
 
   async function handleDeleteChild(childId, childName) {
     setChildToDelete({ id: childId, name: childName });
@@ -295,6 +338,9 @@ export default function MyChildren() {
 
             return {
               ...child,
+              rawEducationCategoryId: child.educationCategory,
+              rawBoardId: child.board,
+              rawSubjectIds: Array.isArray(child.subjectIds) ? child.subjectIds : [],
               educationCategory: categoryName,
               tutorName: tutorName,
               board: boardName,
@@ -484,6 +530,7 @@ export default function MyChildren() {
   }
 
   function handleClose() {
+    setEditingChild(null);
     setShowForm(false);
     setFormData(initialFormData);
     setDaysOfWeek([]);
@@ -580,6 +627,71 @@ export default function MyChildren() {
     setSubmitting(true);
 
     try {
+      if (editingChild) {
+        // === EDIT EXISTING CHILD FLOW ===
+        const childId = editingChild.id ?? editingChild._id;
+        let tutorId = editingChild.tutorId;
+        let parentId = editingChild.parentId;
+
+        if (tutorEmail && (!editingChild.tutorEmail || tutorEmail !== editingChild.tutorEmail.toLowerCase())) {
+          try {
+            const tutorRes = await validateTutorAPI(tutorEmail);
+            if (tutorRes.ok) {
+              const data = await tutorRes.json();
+              tutorId = data.tutor_id || tutorId;
+              parentId = data.parent_id || parentId;
+            }
+          } catch {
+            // keep existing tutorId if lookup fails
+          }
+        }
+
+        const childrenPayload = {
+          id: childId,
+          _id: childId,
+          name: formData.studentName.trim(),
+          parentId: parentId,
+          tutorId: tutorId,
+          grade: formData.grade,
+          subjectIds: formData.subjects,
+          board: formData.board || null,
+          educationCategory: formData.educationCategory,
+        };
+
+        const updateRes = await updateChildAPI(childId, childrenPayload);
+        if (!updateRes.ok) {
+          await saveChildAPI(childrenPayload).catch(() => null);
+        }
+
+        if (daysOfWeek.length > 0 && startTime && endTime && effectiveFrom && hourlyRate) {
+          const schedulePayload = {
+            id: editingChild.schedule?.id ?? editingChild.schedule?._id,
+            childId: childId,
+            parentId: parentId,
+            tutorId: tutorId,
+            daysOfWeek: daysOfWeek,
+            startTime: startTime,
+            endTime: endTime,
+            effectiveFrom: effectiveFrom,
+            effectiveTo: effectiveTo || null,
+            hourlyRate: Number(hourlyRate),
+            status: editingChild.schedule?.status || "PENDING",
+          };
+
+          try {
+            const schedRes = await saveTempScheduleAPI(schedulePayload);
+            if (!schedRes.ok && schedulePayload.id) {
+              await updateScheduleAPI(schedulePayload.id, schedulePayload).catch(() => null);
+            }
+          } catch (schedErr) {
+            console.warn("Schedule save error:", schedErr);
+          }
+        }
+
+        handleClose();
+        await loadChildrensData();
+        return;
+      }
       // Step 1: Verify tutor using existing API
       const response = await validateTutorAPI(tutorEmail);
       if (!response.ok) {
@@ -821,15 +933,27 @@ export default function MyChildren() {
                         </span>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteChild(child.id ?? child._id, child.name)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                        title="Delete Child"
-                        aria-label={`Delete ${child.name}`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(child)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          title="Edit Child Details"
+                          aria-label={`Edit ${child.name}`}
+                        >
+                          <Pencil size={15} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteChild(child.id ?? child._id, child.name)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Delete Child Record"
+                          aria-label={`Delete ${child.name}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -971,6 +1095,27 @@ export default function MyChildren() {
                       )}
                     </div>
                   </div>
+
+                  {/* Card Action Buttons: Edit and Delete */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(child)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-700 transition active:scale-95"
+                    >
+                      <Pencil size={13} className="text-slate-500" />
+                      <span>Edit Child</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteChild(child.id ?? child._id, child.name)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-2xs hover:bg-rose-50 hover:border-rose-300 transition active:scale-95"
+                    >
+                      <Trash2 size={13} className="text-rose-500" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -1018,10 +1163,12 @@ export default function MyChildren() {
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-slate-900">
-                  Add Child
+                  {editingChild ? "Edit Child & Tuition Schedule" : "Add Child"}
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Enter student details and set recurring tuition timings.
+                  {editingChild
+                    ? "Update student academic details, subjects, and recurring schedule."
+                    : "Enter student details and set recurring tuition timings."}
                 </p>
               </div>
 
@@ -1446,7 +1593,13 @@ export default function MyChildren() {
                   disabled={submitting}
                   className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-xs hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 transition-all"
                 >
-                  {submitting ? "Saving..." : "Save Child"}
+                  {submitting
+                    ? editingChild
+                      ? "Updating..."
+                      : "Saving..."
+                    : editingChild
+                    ? "Save Changes"
+                    : "Save Child"}
                 </button>
               </div>
             </form>
