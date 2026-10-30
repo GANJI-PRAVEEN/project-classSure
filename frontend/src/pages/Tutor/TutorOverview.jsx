@@ -94,6 +94,7 @@ export default function TutorOverview({
   onReschedule,
   startingSessionId: parentStartingId,
   endingSessionId: parentEndingId,
+  refreshTrigger,
 }) {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -412,6 +413,12 @@ export default function TutorOverview({
   useEffect(() => {
     loadOverviewData(true);
   }, [loadOverviewData]);
+
+  useEffect(() => {
+    if (refreshTrigger != null && refreshTrigger > 0) {
+      loadOverviewData(false);
+    }
+  }, [refreshTrigger, loadOverviewData]);
 
   // Handle Quick Start Timer directly from Overview
   async function handleStartTimer(session) {

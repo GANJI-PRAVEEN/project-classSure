@@ -6,18 +6,16 @@ import {
   Wallet,
   ClipboardList,
   LogOut,
-  CalendarCheck,
   AlertCircle,
-  RefreshCw,
   Square,
   X,
 } from "lucide-react";
 import MyStudents from "./MyStudent.jsx";
 import Requests from "./Requests.jsx";
-import TuitionCard from "./TuitionCard.jsx";
 import Earnings from "./Earnings.jsx";
 import HistorySection from "./History.jsx";
 import RescheduleModal from "./RescheduleModal.jsx";
+import TutorOverview from "./TutorOverview.jsx";
 import {
   getParentDetailsAPI,
   getStudentDetailsAPI,
@@ -48,6 +46,7 @@ export default function TutorDashboard() {
   const [sessionToEnd, setSessionToEnd] = useState(null);
   const [sessionToReschedule, setSessionToReschedule] = useState(null);
   const [actionError, setActionError] = useState("");
+  const [overviewRefreshKey, setOverviewRefreshKey] = useState(0);
 
   async function fetchTodaySessions(isInitial = false) {
     try {
@@ -261,6 +260,7 @@ export default function TutorDashboard() {
 
       // Background refetch to ensure complete consistency with backend
       await fetchTodaySessions(false);
+      setOverviewRefreshKey((k) => k + 1);
     } catch (error) {
       console.error("Error in start timer:", error);
       setActionError(error.message || "Failed to start session. Please try again.");
@@ -311,6 +311,7 @@ export default function TutorDashboard() {
 
       // Background refetch to ensure complete consistency with backend
       await fetchTodaySessions(false);
+      setOverviewRefreshKey((k) => k + 1);
     } catch (error) {
       console.error("Error in end session:", error);
       setActionError(error.message || "Failed to end session. Please try again.");
@@ -439,185 +440,14 @@ export default function TutorDashboard() {
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 pb-28 lg:pb-8">
           <div className="mx-auto max-w-6xl">
             {activeSection === "Overview" && (
-              <section>
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                    Overview
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Welcome to your tutor workspace. Manage students, tuition timings, and requests.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-                  <div
-                    onClick={() => setActiveSection("My Students")}
-                    className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:shadow-md transition-all group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                          Assigned Students
-                        </p>
-                        <p className="mt-1 text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                          View Roster →
-                        </p>
-                      </div>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/60">
-                        <Users size={22} strokeWidth={1.8} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setActiveSection("Requests")}
-                    className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:shadow-md transition-all group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                          Tuition Requests
-                        </p>
-                        <p className="mt-1 text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                          Check Pending →
-                        </p>
-                      </div>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/60">
-                        <ClipboardList size={22} strokeWidth={1.8} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setActiveSection("Earnings & Payments")}
-                    className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:shadow-md transition-all group sm:col-span-2 lg:col-span-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                          Earnings & Billing
-                        </p>
-                        <p className="mt-1 text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                          View Statements →
-                        </p>
-                      </div>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/60">
-                        <Wallet size={22} strokeWidth={1.8} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Error Banner */}
-                {actionError && (
-                  <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-xs">
-                    <div className="flex items-center gap-2.5">
-                      <AlertCircle size={18} className="shrink-0 text-rose-600" />
-                      <span>{actionError}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActionError("")}
-                      className="rounded-lg px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100/70 transition"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                )}
-
-                {/* Current Activity Section */}
-                {loadingSessions ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-10 sm:p-14 text-center shadow-xs">
-                    <div className="flex flex-col items-center justify-center text-slate-400">
-                      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
-                      <p className="mt-3 text-sm font-medium text-slate-500">
-                        Loading today&apos;s tuition sessions...
-                      </p>
-                    </div>
-                  </div>
-                ) : sessionError ? (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center">
-                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
-                      <AlertCircle size={20} />
-                    </div>
-                    <p className="text-sm font-medium text-rose-700">{sessionError}</p>
-                    <button
-                      type="button"
-                      onClick={() => fetchTodaySessions(true)}
-                      className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition"
-                    >
-                      <RefreshCw size={13} />
-                      Retry
-                    </button>
-                  </div>
-                ) : todaySessions.length === 0 ? (
-                  <div className="space-y-5">
-                    <div>
-                      <h2 className="text-2xl font-semibold text-slate-900">
-                        Current Activity
-                      </h2>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Your tuition sessions today
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 sm:p-12 text-center shadow-xs">
-                      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100/60">
-                        <CalendarCheck size={26} strokeWidth={1.8} />
-                      </div>
-                      <h3 className="text-base font-semibold text-slate-900">
-                        No tuition sessions today
-                      </h3>
-                      <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                        You don&apos;t have any tuition sessions scheduled for today. Check your student roster or pending requests to review upcoming arrangements.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setActiveSection("My Students")}
-                        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
-                      >
-                        View Assigned Students →
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    <div>
-                      <h2 className="text-2xl font-semibold text-slate-900">
-                        Current Activity
-                      </h2>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Your tuition sessions today
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                      {todaySessions.map((session) => (
-                        <TuitionCard
-                          key={session.id}
-                          session={session}
-                          schedule={session}
-                          student={session.student}
-                          parent={session.parent}
-                          subjects={session.subjects}
-                          isStarting={startingSessionId === session.id}
-                          isEnding={endingSessionId === session.id}
-                          onStartTimer={(session) => {
-                            startTimer(session);
-                          }}
-                          onEndSession={(session) => {
-                            setSessionToEnd(session);
-                          }}
-                          onReschedule={(session) => {
-                            setSessionToReschedule(session);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-              </section>
+              <TutorOverview
+                onStartTimer={startTimer}
+                onEndSession={(session) => setSessionToEnd(session)}
+                onReschedule={(session) => setSessionToReschedule(session)}
+                startingSessionId={startingSessionId}
+                endingSessionId={endingSessionId}
+                refreshTrigger={overviewRefreshKey}
+              />
             )}
 
             {activeSection === "My Students" && (
@@ -759,6 +589,7 @@ export default function TutorDashboard() {
           onSuccess={() => {
             fetchTodaySessions();
             setSessionToReschedule(null);
+            setOverviewRefreshKey((k) => k + 1);
           }}
         />
       )}
