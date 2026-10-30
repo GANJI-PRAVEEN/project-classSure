@@ -9,6 +9,10 @@ import {
   AlertCircle,
   Square,
   X,
+  ShieldCheck,
+  Sparkles,
+  GraduationCap,
+  BookOpen,
 } from "lucide-react";
 import MyStudents from "./MyStudent.jsx";
 import Requests from "./Requests.jsx";
@@ -38,6 +42,16 @@ const menuItems = [
 export default function TutorDashboard() {
   const [activeSection, setActiveSection] = useState("Overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const [currentUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const tutorName = currentUser?.name || currentUser?.fullName || "Tutor";
+
   const [todaySessions, setTodaySessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [sessionError, setSessionError] = useState("");
@@ -334,48 +348,77 @@ export default function TutorDashboard() {
       {/* Top Navbar */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 font-bold text-white shadow-xs">
-                C
-              </div>
-              <span className="text-xl font-bold tracking-tight text-slate-900">
-                Class<span className="text-blue-600">Sure</span>
+          {/* Highlighted Web Application Logo */}
+          <button
+            type="button"
+            onClick={() => setActiveSection("Overview")}
+            className="group flex items-center gap-3 text-left focus:outline-hidden"
+            aria-label="ClassSure Home"
+          >
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/25 ring-2 ring-white/90 transition-transform duration-300 group-hover:scale-105">
+              <GraduationCap size={22} className="text-white drop-shadow-xs" strokeWidth={2.4} />
+              <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-400 ring-2 ring-white" />
               </span>
             </div>
-            <span className="hidden sm:inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-              Tutor Portal
+
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 group-hover:text-blue-950 transition-colors">
+                  Class<span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent font-black">Sure</span>
+                </span>
+                <span className="hidden md:inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200/80 px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase text-blue-700 shadow-2xs">
+                  <Sparkles size={10} className="text-blue-600" />
+                  Academic Suite
+                </span>
+              </div>
+              <span className="hidden lg:block text-[10px] font-medium text-slate-400 -mt-0.5 tracking-wide">
+                Tutor Teaching Workspace
+              </span>
+            </div>
+          </button>
+
+          {/* Active Section Breadcrumb Badge (Desktop) */}
+          <div className="hidden md:flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200/70 px-3 py-1.5 shadow-2xs">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Active:</span>
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
+              {activeSection}
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <nav className="hidden items-center gap-1 md:flex">
-              <button
-                type="button"
-                onClick={() => setActiveSection("Overview")}
-                className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${activeSection === "Overview"
-                  ? "text-blue-600 bg-blue-50/70"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-                  }`}
-              >
-                Home
-              </button>
-            </nav>
-
-            <div className="hidden h-4 w-px bg-slate-200 md:block" />
-
-            <div className="hidden items-center gap-2 sm:flex">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
-                T
+          {/* Right Side: Special Role Indicator & Logout */}
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
+            {/* Special Tutor Role Indicator Pill */}
+            <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-200/90 bg-gradient-to-r from-emerald-50/90 via-teal-50/50 to-white px-2.5 sm:px-3 py-1.5 shadow-2xs hover:border-emerald-300 transition-all">
+              <div className="relative flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white font-extrabold text-xs sm:text-sm shadow-xs ring-2 ring-emerald-200/80">
+                {tutorName.charAt(0).toUpperCase()}
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
               </div>
-              <span className="text-xs font-medium text-slate-600">Tutor</span>
+
+              <div className="flex flex-col text-left min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="max-w-[85px] sm:max-w-[120px] truncate text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+                    {tutorName}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
+                    <GraduationCap size={11} strokeWidth={2.4} />
+                    Tutor
+                  </span>
+                </div>
+                <span className="hidden sm:inline-block text-[10px] font-medium text-slate-500 truncate">
+                  Tutor Portal
+                </span>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={handleLogout}
-              className="flex items-center gap-1.5 rounded-xl border border-transparent px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-rose-100 hover:bg-rose-50 hover:text-rose-600"
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 shadow-2xs active:scale-95"
               aria-label="Logout"
+              title="Sign out of ClassSure"
             >
               <LogOut size={16} />
               <span className="hidden sm:inline">Logout</span>
@@ -388,13 +431,16 @@ export default function TutorDashboard() {
       <div className="mx-auto flex w-full max-w-7xl flex-1">
         {/* Desktop Sidebar (hidden on mobile) */}
         <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white p-4 lg:flex sticky top-16 h-[calc(100vh-4rem)]">
-          <div className="px-3 pb-3 pt-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Navigation
+          <div className="px-3 pb-3 pt-2 flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Tutor Menu
             </p>
+            <span className="rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+              {menuItems.length} Tabs
+            </span>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-1.5">
             {menuItems.map(({ label, icon: Icon }) => {
               const isActive = activeSection === label;
 
@@ -406,18 +452,24 @@ export default function TutorDashboard() {
                     setActiveSection(label);
                     setSidebarOpen(false);
                   }}
-                  className={`group flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-sm font-medium transition-all ${isActive
-                    ? "bg-blue-50 text-blue-600 font-semibold shadow-xs"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
+                  className={`relative group flex w-full items-center gap-3 rounded-2xl px-3.5 py-2.5 text-left text-sm font-semibold transition-all ${
+                    isActive
+                      ? "bg-gradient-to-r from-emerald-50/90 via-teal-50/40 to-transparent text-emerald-800 shadow-xs border border-emerald-100/70 before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1.5 before:rounded-r-full before:bg-emerald-600"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent"
+                  }`}
                 >
-                  <Icon
-                    size={18}
-                    className={isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"}
-                  />
-                  <span className="flex-1">{label}</span>
+                  <div
+                    className={`flex h-8 w-8 items-center justify-center rounded-xl transition-all ${
+                      isActive
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-500 group-hover:bg-slate-200/70 group-hover:text-slate-700"
+                    }`}
+                  >
+                    <Icon size={17} strokeWidth={isActive ? 2.4 : 1.9} />
+                  </div>
+                  <span className="flex-1 truncate">{label}</span>
                   {isActive && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
                   )}
                 </button>
               );
@@ -425,12 +477,15 @@ export default function TutorDashboard() {
           </nav>
 
           <div className="mt-auto pt-6">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-              <p className="text-xs font-semibold text-slate-800">
-                Tuition Sessions
-              </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                Keep class statuses updated so parents receive timely confirmations.
+            <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/70 to-teal-50/40 p-4 shadow-2xs">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Sparkles size={16} className="text-emerald-600 shrink-0" />
+                <p className="text-xs font-bold text-slate-900">
+                  Educator Workspace
+                </p>
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-500">
+                Timestamps, elapsed timers, and parent reviews are synchronized in real-time.
               </p>
             </div>
           </div>
@@ -480,7 +535,7 @@ export default function TutorDashboard() {
       {/* Fixed Mobile Bottom Navigation Bar (replaces sidebar on mobile) */}
       <nav
         aria-label="Mobile Navigation"
-        className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-4px_20px_rgba(0,0,0,0.04)] lg:hidden"
+        className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-4px_24px_rgba(0,0,0,0.06)] lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         <div className="grid grid-cols-5 h-16">
@@ -495,20 +550,27 @@ export default function TutorDashboard() {
                   setActiveSection(label);
                   setSidebarOpen(false);
                 }}
-                className={`flex flex-col items-center justify-center gap-1 transition-colors ${isActive
-                  ? "text-blue-600 font-semibold"
-                  : "text-slate-500 hover:text-slate-800"
-                  }`}
+                className={`flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
+                  isActive
+                    ? "text-emerald-700 font-bold"
+                    : "text-slate-500 hover:text-slate-800 font-medium"
+                }`}
               >
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors ${isActive ? "bg-blue-50 text-blue-600" : "text-slate-500"
-                    }`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-xl transition-all ${
+                    isActive
+                      ? "bg-gradient-to-tr from-emerald-600 to-teal-600 text-white shadow-xs"
+                      : "text-slate-500"
+                  }`}
                 >
-                  <Icon size={18} strokeWidth={isActive ? 2.3 : 1.8} />
+                  <Icon size={18} strokeWidth={isActive ? 2.4 : 1.8} />
                 </div>
                 <span className="text-[10px] leading-none truncate max-w-[62px]">
                   {shortLabel || label}
                 </span>
+                {isActive && (
+                  <span className="h-1 w-4 rounded-full bg-emerald-600 -mt-0.5" />
+                )}
               </button>
             );
           })}
