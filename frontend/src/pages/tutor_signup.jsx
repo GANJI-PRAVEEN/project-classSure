@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+console.log("the url is : ", API_BASE_URL);
 
 export default function TutorSignup() {
   const [form, setForm] = useState({
@@ -331,8 +332,8 @@ export default function TutorSignup() {
                 <label
                   key={subject.selectionKey}
                   className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition ${isSelected
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-slate-200 hover:bg-slate-50"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-slate-200 hover:bg-slate-50"
                     }`}
                 >
                   <input
