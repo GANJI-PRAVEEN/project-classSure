@@ -92,7 +92,18 @@ export default function TutorDashboard() {
         throw new Error(result.message || "Failed to load today's sessions");
       }
 
-      const sessions = Array.isArray(result.data) ? result.data : [];
+      const rawSessions = Array.isArray(result.data) ? result.data : [];
+      const seenSessionKeys = new Set();
+      const sessions = rawSessions.filter((s) => {
+        const sId = String(s.id || s._id || "");
+        const schedId = String(s.scheduleId || "");
+        const childId = String(s.childId || "");
+        const start = String(s.scheduleStart || s.startTime || "");
+        const key = schedId ? `sched_${schedId}` : sId ? `id_${sId}` : `child_${childId}_${start}`;
+        if (seenSessionKeys.has(key)) return false;
+        seenSessionKeys.add(key);
+        return true;
+      });
 
       // Map completed tuitions for quick lookup by sessionId
       const completedTuitionMap = new Map();

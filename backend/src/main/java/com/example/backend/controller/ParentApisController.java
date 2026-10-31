@@ -3,6 +3,7 @@ package com.example.backend.controller;
 import com.example.backend.enums.SessionStatus;
 import com.example.backend.model.*;
 import com.example.backend.repo.*;
+import org.apache.coyote.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,8 +44,31 @@ public class ParentApisController {
 
         if (authentication != null && authentication.isAuthenticated()) {
             Optional<Users> parentOpt = userrepo.findByEmail(authentication.getName());
+            if (parentOpt.isEmpty()) {
+                parentOpt = userrepo.findByEmailIgnoreCase(authentication.getName());
+            }
             if (parentOpt.isPresent()) {
                 children.setParentId(parentOpt.get().getId());
+            }
+        }
+
+        // Prevent duplicate child records: if a child with this name already exists for this parent, update it
+        if (children.getParentId() != null) {
+            List<Children> existingChildren = childrenRepo.findAllByParentId(children.getParentId());
+            if (existingChildren != null) {
+                String cleanName = children.getName().trim();
+                for (Children ec : existingChildren) {
+                    if (ec.getName() != null && ec.getName().trim().equalsIgnoreCase(cleanName)) {
+                        ec.setName(cleanName);
+                        if (children.getTutorId() != null) ec.setTutorId(children.getTutorId());
+                        if (children.getGrade() != null) ec.setGrade(children.getGrade());
+                        if (children.getBoard() != null) ec.setBoard(children.getBoard());
+                        if (children.getEducationCategory() != null) ec.setEducationCategory(children.getEducationCategory());
+                        if (children.getSubjectIds() != null && !children.getSubjectIds().isEmpty()) ec.setSubjectIds(children.getSubjectIds());
+                        Children updated = childrenRepo.save(ec);
+                        return ResponseEntity.ok(updated);
+                    }
+                }
             }
         }
 
@@ -60,14 +84,26 @@ public class ParentApisController {
     public List<Children> getAllChildrens(Authentication authentication) {
         if (authentication != null && authentication.isAuthenticated()) {
             Optional<Users> parent = userrepo.findByEmail(authentication.getName());
+            if (parent.isEmpty()) {
+                parent = userrepo.findByEmailIgnoreCase(authentication.getName());
+            }
             if (parent.isPresent()) {
                 List<Children> parentChildren = childrenRepo.findAllByParentId(parent.get().getId());
-                if (!parentChildren.isEmpty()) {
-                    return parentChildren;
+                if (parentChildren != null && !parentChildren.isEmpty()) {
+                    // Deduplicate children by ID and normalized name
+                    Map<String, Children> uniqueMap = new LinkedHashMap<>();
+                    for (Children c : parentChildren) {
+                        String key = c.getName() != null ? c.getName().trim().toLowerCase() : c.getId();
+                        if (key != null && !uniqueMap.containsKey(key)) {
+                            uniqueMap.put(key, c);
+                        }
+                    }
+                    return new ArrayList<>(uniqueMap.values());
                 }
+                return Collections.emptyList();
             }
         }
-        return childrenRepo.findAll();
+        return Collections.emptyList();
     }
 
     @PostMapping("/validate-tutor")
@@ -279,10 +315,29 @@ public class ParentApisController {
         }
 
         List<Session> allSessions = sessionRepo.findAllByParentIdOrderBySessionDate(parent.getId());
-        List<Session> todaySessions = (allSessions == null ? Collections.<Session>emptyList() : allSessions).stream()
-                .filter(session -> session.getSessionDate() != null && session.getSessionDate().equals(today))
-                .sorted(Comparator.comparing(Session::getScheduleStart, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
+        Map<String, Session> uniqueSessions = new LinkedHashMap<>();
+        if (allSessions != null) {
+            for (Session session : allSessions) {
+                if (session.getSessionDate() != null && session.getSessionDate().equals(today)) {
+                    String key = session.getId();
+                    if (session.getScheduleId() != null && !session.getScheduleId().trim().isEmpty()) {
+                        key = "sched_" + session.getScheduleId();
+                    } else if (session.getChildId() != null && session.getScheduleStart() != null) {
+                        key = "child_" + session.getChildId() + "_" + session.getScheduleStart();
+                    }
+                    if (key != null && !uniqueSessions.containsKey(key)) {
+                        uniqueSessions.put(key, session);
+                    } else if (key != null) {
+                        Session existing = uniqueSessions.get(key);
+                        if (existing != null && existing.getSessionStatus() == SessionStatus.UPCOMING && session.getSessionStatus() != SessionStatus.UPCOMING) {
+                            uniqueSessions.put(key, session);
+                        }
+                    }
+                }
+            }
+        }
+        List<Session> todaySessions = new ArrayList<>(uniqueSessions.values());
+        todaySessions.sort(Comparator.comparing(Session::getScheduleStart, Comparator.nullsLast(Comparator.naturalOrder())));
 
         return ResponseEntity.ok(Map.of(
                 "message", "Today's sessions fetched successfully",
@@ -358,7 +413,80 @@ public class ParentApisController {
         ));
     }
 
-    
+
+    @PutMapping({"/update-child/{childId}", "/api/parent/update-child/{childId}"})
+    public ResponseEntity<?> updateChild(
+            @PathVariable String childId,
+            @RequestBody Map<String, Object> childPayload,
+            Authentication authentication) {
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User not authenticated"));
+        }
+
+        Optional<Children> optionalChildren = childrenRepo.findById(childId);
+
+        if (optionalChildren.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Child not found"));
+        }
+
+        Children children = optionalChildren.get();
+
+        // Get authenticated parent's email
+        String parentEmail = authentication.getName();
+
+        Optional<Users> optionalParent = userrepo.findByEmail(parentEmail);
+        if (optionalParent.isEmpty()) {
+            optionalParent = userrepo.findByEmailIgnoreCase(parentEmail);
+        }
+
+        if (optionalParent.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Parent not found"));
+        }
+
+        Users parent = optionalParent.get();
+
+        // Verify child belongs to this parent
+        if (!children.getParentId().equals(parent.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "You are not authorized to update this child"));
+        }
+
+        // Update allowed fields
+        if (childPayload.containsKey("name")) {
+            children.setName((String) childPayload.get("name"));
+        }
+
+        if (childPayload.containsKey("grade")) {
+            children.setGrade((String) childPayload.get("grade"));
+        }
+
+        if (childPayload.containsKey("board")) {
+            children.setBoard((String) childPayload.get("board"));
+        }
+
+        if (childPayload.containsKey("subjectIds")) {
+            children.setSubjectIds(
+                    (List<String>) childPayload.get("subjectIds")
+            );
+        }
+        if (childPayload.containsKey("educationCategory")) {
+            children.setEducationCategory(
+                    (String)childPayload.get("educationCategory")
+            );
+        }
+
+        childrenRepo.save(children);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Child updated successfully",
+                "child", children
+        ));
+    }
+
 
 
 }

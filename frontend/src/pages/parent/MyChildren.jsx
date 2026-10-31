@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
-import { Plus, Users, X, Clock, Trash2, GraduationCap, AlertCircle, RefreshCw, Pencil } from "lucide-react";
+import {
+  Plus,
+  Users,
+  X,
+  Clock,
+  Trash2,
+  GraduationCap,
+  AlertCircle,
+  RefreshCw,
+  Pencil,
+  UserCheck,
+  CheckCircle2,
+} from "lucide-react";
 
 import {
   getAllChildrensAPI,
@@ -178,22 +190,79 @@ export default function MyChildren() {
   const [effectiveTo, setEffectiveTo] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
 
-  function handleOpenEdit(child) {
+  // Edit section focus ("all", "child", "tutor", "schedule")
+  const [editSection, setEditSection] = useState("all");
+  const [verifyingTutor, setVerifyingTutor] = useState(false);
+  const [verifiedTutorInfo, setVerifiedTutorInfo] = useState(null);
+
+  async function handleVerifyTutor(emailToVerify) {
+    const targetEmail = (emailToVerify || formData.tutorEmail).trim().toLowerCase();
+    if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      setErrors((prev) => ({ ...prev, tutorEmail: "Enter a valid email before verifying." }));
+      return;
+    }
+    setVerifyingTutor(true);
+    try {
+      const res = await validateTutorAPI(targetEmail);
+      if (res.ok) {
+        const data = await res.json();
+        let tName = "";
+        if (data.tutor_id) {
+          try {
+            const tRes = await getTutorByIdAPI(data.tutor_id);
+            if (tRes.ok) {
+              const tData = await tRes.json();
+              tName = tData.fullName ?? tData.name ?? "";
+            }
+          } catch {
+            // fallback
+          }
+        }
+        setVerifiedTutorInfo({
+          tutorId: data.tutor_id,
+          name: tName || "Registered Tutor",
+          email: targetEmail,
+        });
+        setErrors((prev) => ({ ...prev, tutorEmail: "" }));
+      } else {
+        setVerifiedTutorInfo(null);
+        setErrors((prev) => ({ ...prev, tutorEmail: "No registered tutor found with this email." }));
+      }
+    } catch {
+      setErrors((prev) => ({ ...prev, tutorEmail: "Network error while checking tutor." }));
+    } finally {
+      setVerifyingTutor(false);
+    }
+  }
+
+  function handleOpenEdit(child, initialSection = "all") {
     setEditingChild(child);
+    setEditSection(initialSection);
     const catId = child.rawEducationCategoryId || child.educationCategory || "";
     const matchedCat = categories.find(
       (c) => String(getId(c)) === String(catId) || getName(c) === child.educationCategory
     );
     const educationCategory = matchedCat ? getId(matchedCat) : catId;
 
+    const email = child.tutorEmail || child.schedule?.tutorEmail || "";
     setFormData({
       studentName: child.name || "",
-      tutorEmail: child.tutorEmail || child.tutor?.email || "",
+      tutorEmail: email,
       educationCategory: educationCategory,
       board: child.rawBoardId || child.board || "",
       grade: child.grade || "",
       subjects: child.rawSubjectIds || child.subjectIds || [],
     });
+
+    if (email) {
+      setVerifiedTutorInfo({
+        tutorId: child.tutorId,
+        name: child.tutorName || "Current Tutor",
+        email: email,
+      });
+    } else {
+      setVerifiedTutorInfo(null);
+    }
 
     if (child.schedule) {
       setDaysOfWeek(Array.isArray(child.schedule.daysOfWeek) ? child.schedule.daysOfWeek : []);
@@ -264,12 +333,25 @@ export default function MyChildren() {
       }
 
       if (res.ok) {
-        const data = await res.json();
+        const rawData = await res.json();
+        const rawList = Array.isArray(rawData) ? rawData : [];
+        const seenChildIds = new Set();
+        const seenChildNames = new Set();
+        const data = rawList.filter((c) => {
+          const id = String(c.id ?? c._id ?? "");
+          const normName = (c.name || "").trim().toLowerCase();
+          if (id && seenChildIds.has(id)) return false;
+          if (normName && seenChildNames.has(normName)) return false;
+          if (id) seenChildIds.add(id);
+          if (normName) seenChildNames.add(normName);
+          return true;
+        });
         const updatedChildren = await Promise.all(
           data.map(async (child) => {
             const childId = String(child.id ?? child._id ?? "");
             let categoryName = child.educationCategory;
             let tutorName = child.tutorName;
+            let tutorEmail = child.tutorEmail || "";
             let boardName = child.board;
             let subjectNames = Array.isArray(child.subjects) ? child.subjects : [];
 
@@ -290,7 +372,8 @@ export default function MyChildren() {
                 const tutorRes = await getTutorByIdAPI(child.tutorId);
                 if (tutorRes.ok) {
                   const tutorData = await tutorRes.json();
-                  tutorName = tutorData.fullName ?? tutorName;
+                  tutorName = tutorData.fullName ?? tutorData.name ?? tutorName;
+                  tutorEmail = tutorData.email || tutorData.user?.email || tutorEmail;
                 }
               }
             } catch (err) {
@@ -336,6 +419,10 @@ export default function MyChildren() {
               }
             }
 
+            if (!tutorEmail && matchedSchedule?.tutorEmail) {
+              tutorEmail = matchedSchedule.tutorEmail;
+            }
+
             return {
               ...child,
               rawEducationCategoryId: child.educationCategory,
@@ -343,6 +430,7 @@ export default function MyChildren() {
               rawSubjectIds: Array.isArray(child.subjectIds) ? child.subjectIds : [],
               educationCategory: categoryName,
               tutorName: tutorName,
+              tutorEmail: tutorEmail,
               board: boardName,
               subjects: subjectNames,
               schedule: matchedSchedule,
@@ -531,6 +619,8 @@ export default function MyChildren() {
 
   function handleClose() {
     setEditingChild(null);
+    setEditSection("all");
+    setVerifiedTutorInfo(null);
     setShowForm(false);
     setFormData(initialFormData);
     setDaysOfWeek([]);
@@ -621,6 +711,7 @@ export default function MyChildren() {
     // Stop and do not make any save requests if validation fails
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      setEditSection("all");
       return;
     }
 
@@ -633,16 +724,33 @@ export default function MyChildren() {
         let tutorId = editingChild.tutorId;
         let parentId = editingChild.parentId;
 
-        if (tutorEmail && (!editingChild.tutorEmail || tutorEmail !== editingChild.tutorEmail.toLowerCase())) {
+        const originalTutorEmail = (editingChild.tutorEmail || "").trim().toLowerCase();
+        if (tutorEmail !== originalTutorEmail || !tutorId) {
           try {
             const tutorRes = await validateTutorAPI(tutorEmail);
             if (tutorRes.ok) {
               const data = await tutorRes.json();
               tutorId = data.tutor_id || tutorId;
               parentId = data.parent_id || parentId;
+            } else {
+              const err = await tutorRes.json().catch(() => ({}));
+              setErrors({
+                tutorEmail:
+                  err.error ||
+                  err.message ||
+                  "No tutor found with this email. Please check that this email belongs to a registered tutor.",
+              });
+              setEditSection("tutor");
+              setSubmitting(false);
+              return;
             }
           } catch {
-            // keep existing tutorId if lookup fails
+            setErrors({
+              tutorEmail: "Failed to verify tutor email. Please check your connection.",
+            });
+            setEditSection("tutor");
+            setSubmitting(false);
+            return;
           }
         }
 
@@ -992,10 +1100,21 @@ export default function MyChildren() {
                             {child.tutorName || "No tutor assigned"}
                           </span>
                         </p>
+                        {child.tutorEmail && (
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5 font-mono">
+                            {child.tutorEmail}
+                          </p>
+                        )}
                       </div>
-                      <span className="shrink-0 rounded-md bg-blue-50 border border-blue-100/80 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-                        Tutor
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(child, "tutor")}
+                        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700 transition active:scale-95"
+                        title="Change assigned tutor"
+                      >
+                        <UserCheck size={12} />
+                        <span>Change</span>
+                      </button>
                     </div>
 
                     {/* Subjects */}
@@ -1026,11 +1145,22 @@ export default function MyChildren() {
                           <Clock size={14} className="text-blue-600" />
                           <span>Weekly Schedule</span>
                         </div>
-                        {schedule?.hourlyRate != null && schedule.hourlyRate > 0 && (
-                          <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs">
-                            ₹{schedule.hourlyRate}/hr
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {schedule?.hourlyRate != null && schedule.hourlyRate > 0 && (
+                            <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs">
+                              ₹{schedule.hourlyRate}/hr
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(child, "schedule")}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 shadow-2xs transition active:scale-95"
+                            title="Edit schedule timings and class days"
+                          >
+                            <Pencil size={11} className="text-blue-600" />
+                            <span>Edit</span>
+                          </button>
+                        </div>
                       </div>
 
                       {schedule ? (
@@ -1091,7 +1221,17 @@ export default function MyChildren() {
                           )}
                         </div>
                       ) : (
-                        <p className="text-xs italic text-slate-400">No schedule assigned yet</p>
+                        <div className="flex items-center justify-between py-1">
+                          <p className="text-xs italic text-slate-400">No schedule assigned yet</p>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(child, "schedule")}
+                            className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition active:scale-95"
+                          >
+                            <Plus size={12} />
+                            <span>Add Schedule</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1100,11 +1240,11 @@ export default function MyChildren() {
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                     <button
                       type="button"
-                      onClick={() => handleOpenEdit(child)}
+                      onClick={() => handleOpenEdit(child, "all")}
                       className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-700 transition active:scale-95"
                     >
                       <Pencil size={13} className="text-slate-500" />
-                      <span>Edit Child</span>
+                      <span>Edit Child & Schedule</span>
                     </button>
 
                     <button
@@ -1162,13 +1302,18 @@ export default function MyChildren() {
           <div className="relative my-auto flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
               <div>
-                <h2 className="text-lg font-bold tracking-tight text-slate-900">
-                  {editingChild ? "Edit Child & Tuition Schedule" : "Add Child"}
+                <h2 className="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                  <span>{editingChild ? `Edit Child & Tuition Schedule` : "Add Child"}</span>
+                  {editingChild && (
+                    <span className="rounded-md bg-blue-50 border border-blue-200/80 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                      Edit Mode
+                    </span>
+                  )}
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {editingChild
-                    ? "Update student academic details, subjects, and recurring schedule."
-                    : "Enter student details and set recurring tuition timings."}
+                    ? "Modify student details, reassign tutor, or update recurring tuition schedule."
+                    : "Enter student details, assign a tutor, and set recurring tuition timings."}
                 </p>
               </div>
 
@@ -1183,392 +1328,559 @@ export default function MyChildren() {
               </button>
             </div>
 
+            {/* Quick Section Tabs when editing */}
+            {editingChild && (
+              <div className="flex items-center gap-1.5 border-b border-slate-200/80 bg-slate-50/80 px-5 py-2.5 overflow-x-auto text-xs shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setEditSection("all")}
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap ${
+                    editSection === "all"
+                      ? "bg-blue-600 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-200/60"
+                  }`}
+                >
+                  All Details
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditSection("child")}
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
+                    editSection === "child"
+                      ? "bg-blue-600 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <GraduationCap size={13} />
+                  <span>Student Info</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditSection("tutor")}
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
+                    editSection === "tutor"
+                      ? "bg-blue-600 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <UserCheck size={13} />
+                  <span>Change Tutor</span>
+                  {editingChild.tutorName && (
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                      editSection === "tutor" ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {editingChild.tutorName.split(" ")[0]}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditSection("schedule")}
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
+                    editSection === "schedule"
+                      ? "bg-blue-600 text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <Clock size={13} />
+                  <span>Change Schedule</span>
+                  {editingChild.schedule && (
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                      editSection === "schedule" ? "bg-blue-500 text-white" : "bg-emerald-100 text-emerald-800"
+                    }`}>
+                      {editingChild.schedule.status || "Set"}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+
             <form
               onSubmit={handleSubmit}
               className="flex min-h-0 flex-1 flex-col"
             >
               <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
-                {/* Student name */}
-                <div>
-                  <label className={labelClass} htmlFor="studentName">
-                    Student name *
-                  </label>
-                  <input
-                    id="studentName"
-                    name="studentName"
-                    type="text"
-                    value={formData.studentName}
-                    onChange={handleChange}
-                    placeholder="Enter student's full name"
-                    className={inputClass}
-                    disabled={submitting}
-                    required
-                  />
-                  {errors.studentName && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.studentName}</p>
-                  )}
-                </div>
+                {/* 1. Student & Academics Section */}
+                {(!editingChild || editSection === "all" || editSection === "child") && (
+                  <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-slate-50/30 p-4">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <GraduationCap size={16} className="text-blue-600" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Student & Academic Details
+                      </h3>
+                    </div>
 
-                {/* Tutor email */}
-                <div>
-                  <label className={labelClass} htmlFor="tutorEmail">
-                    Tutor email *
-                  </label>
-                  <input
-                    id="tutorEmail"
-                    name="tutorEmail"
-                    type="email"
-                    value={formData.tutorEmail}
-                    onChange={handleChange}
-                    placeholder="Enter the registered tutor's email"
-                    className={inputClass}
-                    autoComplete="email"
-                    disabled={submitting}
-                    required
-                  />
-                  <p className="mt-1 text-xs text-slate-500">
-                    Enter the email the tutor used to register on ClassSure.
-                  </p>
-                  {errors.tutorEmail && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.tutorEmail}</p>
-                  )}
-                </div>
+                    {/* Student name */}
+                    <div>
+                      <label className={labelClass} htmlFor="studentName">
+                        Student name *
+                      </label>
+                      <input
+                        id="studentName"
+                        name="studentName"
+                        type="text"
+                        value={formData.studentName}
+                        onChange={handleChange}
+                        placeholder="Enter student's full name"
+                        className={inputClass}
+                        disabled={submitting}
+                        required
+                      />
+                      {errors.studentName && (
+                        <p className="mt-1 text-xs text-rose-600">{errors.studentName}</p>
+                      )}
+                    </div>
 
-                {/* Education category */}
-                <div>
-                  <label className={labelClass} htmlFor="educationCategory">
-                    Education category *
-                  </label>
-                  <select
-                    id="educationCategory"
-                    name="educationCategory"
-                    value={formData.educationCategory}
-                    onChange={handleCategoryChange}
-                    className={inputClass}
-                    disabled={loadingCategories || submitting}
-                    required
-                  >
-                    <option value="">
-                      {loadingCategories
-                        ? "Loading categories..."
-                        : "Select education category"}
-                    </option>
-                    {categories.map((category) => (
-                      <option key={getId(category)} value={getId(category)}>
-                        {getName(category)}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.educationCategory && (
-                    <p className="mt-1 text-xs text-rose-600">
-                      {errors.educationCategory}
-                    </p>
-                  )}
-                </div>
-
-                {/* Board */}
-                {formData.educationCategory && !isCompetitiveExam && (
-                  <div>
-                    <label className={labelClass} htmlFor="board">
-                      Board
-                    </label>
-                    <select
-                      id="board"
-                      name="board"
-                      value={formData.board}
-                      onChange={handleChange}
-                      className={inputClass}
-                      disabled={loadingBoards || boards.length === 0 || submitting}
-                    >
-                      <option value="">
-                        {loadingBoards
-                          ? "Loading boards..."
-                          : boards.length === 0
-                            ? "No boards available"
-                            : "Select board"}
-                      </option>
-                      {boards.map((board) => (
-                        <option key={getId(board)} value={getId(board)}>
-                          {getName(board)}
+                    {/* Education category */}
+                    <div>
+                      <label className={labelClass} htmlFor="educationCategory">
+                        Education category *
+                      </label>
+                      <select
+                        id="educationCategory"
+                        name="educationCategory"
+                        value={formData.educationCategory}
+                        onChange={handleCategoryChange}
+                        className={inputClass}
+                        disabled={loadingCategories || submitting}
+                        required
+                      >
+                        <option value="">
+                          {loadingCategories
+                            ? "Loading categories..."
+                            : "Select education category"}
                         </option>
-                      ))}
-                    </select>
-                    {errors.board && (
-                      <p className="mt-1 text-xs text-rose-600">{errors.board}</p>
+                        {categories.map((category) => (
+                          <option key={getId(category)} value={getId(category)}>
+                            {getName(category)}
+                          </option>
+                        ))}
+                      </select>
+                      {errors.educationCategory && (
+                        <p className="mt-1 text-xs text-rose-600">
+                          {errors.educationCategory}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Board */}
+                    {formData.educationCategory && !isCompetitiveExam && (
+                      <div>
+                        <label className={labelClass} htmlFor="board">
+                          Board
+                        </label>
+                        <select
+                          id="board"
+                          name="board"
+                          value={formData.board}
+                          onChange={handleChange}
+                          className={inputClass}
+                          disabled={loadingBoards || boards.length === 0 || submitting}
+                        >
+                          <option value="">
+                            {loadingBoards
+                              ? "Loading boards..."
+                              : boards.length === 0
+                                ? "No boards available"
+                                : "Select board"}
+                          </option>
+                          {boards.map((board) => (
+                            <option key={getId(board)} value={getId(board)}>
+                              {getName(board)}
+                            </option>
+                          ))}
+                        </select>
+                        {errors.board && (
+                          <p className="mt-1 text-xs text-rose-600">{errors.board}</p>
+                        )}
+                      </div>
                     )}
+
+                    {/* Grade */}
+                    <div>
+                      <label className={labelClass} htmlFor="grade">
+                        {isCompetitiveExam
+                          ? "Preparation level *"
+                          : "Grade / Year / Semester *"}
+                      </label>
+                      <select
+                        id="grade"
+                        name="grade"
+                        value={formData.grade}
+                        onChange={handleChange}
+                        className={inputClass}
+                        disabled={!formData.educationCategory || loadingGrades || submitting}
+                        required
+                      >
+                        <option value="">
+                          {!formData.educationCategory
+                            ? "Select a category first"
+                            : loadingGrades
+                              ? "Loading options..."
+                              : grades.length === 0
+                                ? "No options available"
+                                : "Select an option"}
+                        </option>
+                        {grades.map((grade) => (
+                          <option key={grade} value={grade}>
+                            {grade}
+                          </option>
+                        ))}
+                      </select>
+                      {errors.grade && (
+                        <p className="mt-1 text-xs text-rose-600">{errors.grade}</p>
+                      )}
+                    </div>
+
+                    {/* Subjects */}
+                    <div>
+                      <label className={labelClass}>Subjects *</label>
+                      {loadingSubjects ? (
+                        <p className="text-xs text-slate-500">Loading subjects...</p>
+                      ) : subjects.length === 0 ? (
+                        <p className="text-xs text-slate-500">No subjects available.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {subjects.map((subject) => {
+                            const subjectId = String(getId(subject));
+                            const isChecked = formData.subjects.includes(subjectId);
+                            return (
+                              <label
+                                key={subjectId}
+                                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all ${
+                                  isChecked
+                                    ? "border-blue-600 bg-blue-50/70 text-blue-700 shadow-xs"
+                                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleSubjectChange(subjectId)}
+                                  disabled={submitting}
+                                  className="h-4 w-4 rounded accent-blue-600"
+                                />
+                                <span className="truncate">{getName(subject)}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {errors.subjects && (
+                        <p className="mt-1 text-xs text-rose-600">{errors.subjects}</p>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {/* Grade */}
-                <div>
-                  <label className={labelClass} htmlFor="grade">
-                    {isCompetitiveExam
-                      ? "Preparation level *"
-                      : "Grade / Year / Semester *"}
-                  </label>
-                  <select
-                    id="grade"
-                    name="grade"
-                    value={formData.grade}
-                    onChange={handleChange}
-                    className={inputClass}
-                    disabled={!formData.educationCategory || loadingGrades || submitting}
-                    required
-                  >
-                    <option value="">
-                      {!formData.educationCategory
-                        ? "Select a category first"
-                        : loadingGrades
-                          ? "Loading options..."
-                          : grades.length === 0
-                            ? "No options available"
-                            : "Select an option"}
-                    </option>
-                    {grades.map((grade) => (
-                      <option key={grade} value={grade}>
-                        {grade}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.grade && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.grade}</p>
-                  )}
-                </div>
-
-                {/* Subjects */}
-                <div>
-                  <label className={labelClass}>Subjects *</label>
-                  {loadingSubjects ? (
-                    <p className="text-xs text-slate-500">Loading subjects...</p>
-                  ) : subjects.length === 0 ? (
-                    <p className="text-xs text-slate-500">No subjects available.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {subjects.map((subject) => {
-                        const subjectId = String(getId(subject));
-                        const isChecked = formData.subjects.includes(subjectId);
-                        return (
-                          <label
-                            key={subjectId}
-                            className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all ${isChecked
-                              ? "border-blue-600 bg-blue-50/70 text-blue-700 shadow-xs"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                              }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleSubjectChange(subjectId)}
-                              disabled={submitting}
-                              className="h-4 w-4 rounded accent-blue-600"
-                            />
-                            <span className="truncate">{getName(subject)}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {errors.subjects && (
-                    <p className="mt-1 text-xs text-rose-600">{errors.subjects}</p>
-                  )}
-                </div>
-
-                {/* Tuition Schedule section */}
-                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5">
-                  <div className="mb-4 flex items-center gap-2">
-                    <Clock size={17} className="text-blue-600" />
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Tuition Schedule *
-                    </h3>
-                  </div>
-
-                  {/* Hourly Tuition Fee */}
-                  <div className="mb-4">
-                    <label className={labelClass} htmlFor="hourlyRate">
-                      Hourly Tuition Fee (₹/hour) *
-                    </label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-sm font-semibold text-slate-400">
-                        ₹
-                      </span>
-                      <input
-                        id="hourlyRate"
-                        name="hourlyRate"
-                        type="number"
-                        min="1"
-                        step="any"
-                        value={hourlyRate}
-                        onChange={(e) => {
-                          setHourlyRate(e.target.value);
-                          setErrors((prev) => ({ ...prev, hourlyRate: "" }));
-                        }}
-                        placeholder="Enter hourly fee (e.g., 300)"
-                        className={`${inputClass} pl-8`}
-                        disabled={submitting}
-                        required
-                      />
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      This rate will be used to calculate the tutor&apos;s earnings from verified teaching hours.
-                    </p>
-                    {errors.hourlyRate && (
-                      <p className="mt-1 text-xs text-rose-600">{errors.hourlyRate}</p>
-                    )}
-                  </div>
-
-                  {/* Recurring Class Days */}
-                  <div className="mb-4">
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                      Class Days *
-                    </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        "MONDAY",
-                        "TUESDAY",
-                        "WEDNESDAY",
-                        "THURSDAY",
-                        "FRIDAY",
-                        "SATURDAY",
-                        "SUNDAY",
-                      ].map((day) => {
-                        const selected = daysOfWeek.includes(day);
-                        return (
-                          <button
-                            key={day}
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => {
-                              setDaysOfWeek((previous) =>
-                                selected
-                                  ? previous.filter((item) => item !== day)
-                                  : [...previous, day]
-                              );
-                              setErrors((prev) => ({ ...prev, daysOfWeek: "" }));
-                            }}
-                            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${selected
-                              ? "border-blue-600 bg-blue-600 text-white shadow-xs"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40"
-                              } disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {day.charAt(0) + day.slice(1, 3).toLowerCase()}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {errors.daysOfWeek && (
-                      <p className="mt-1 text-xs text-rose-600">{errors.daysOfWeek}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                    {/* Start Time */}
-                    <div>
-                      <label
-                        htmlFor="startTime"
-                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
-                      >
-                        Start Time *
-                      </label>
-                      <input
-                        id="startTime"
-                        type="time"
-                        value={startTime}
-                        disabled={submitting}
-                        onChange={(e) => {
-                          setStartTime(e.target.value);
-                          setErrors((prev) => ({ ...prev, startTime: "", endTime: "" }));
-                        }}
-                        className={inputClass}
-                        required
-                      />
-                      {errors.startTime && (
-                        <p className="mt-1 text-xs text-rose-600">{errors.startTime}</p>
-                      )}
-                    </div>
-
-                    {/* End Time */}
-                    <div>
-                      <label
-                        htmlFor="endTime"
-                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
-                      >
-                        End Time *
-                      </label>
-                      <input
-                        id="endTime"
-                        type="time"
-                        value={endTime}
-                        disabled={submitting}
-                        onChange={(e) => {
-                          setEndTime(e.target.value);
-                          setErrors((prev) => ({ ...prev, endTime: "" }));
-                        }}
-                        className={inputClass}
-                        required
-                      />
-                      {errors.endTime && (
-                        <p className="mt-1 text-xs text-rose-600">{errors.endTime}</p>
-                      )}
-                    </div>
-
-                    {/* Effective From */}
-                    <div>
-                      <label
-                        htmlFor="effectiveFrom"
-                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
-                      >
-                        Effective From *
-                      </label>
-                      <input
-                        id="effectiveFrom"
-                        type="date"
-                        value={effectiveFrom}
-                        disabled={submitting}
-                        onChange={(e) => {
-                          setEffectiveFrom(e.target.value);
-                          setErrors((prev) => ({ ...prev, effectiveFrom: "", effectiveTo: "" }));
-                        }}
-                        className={inputClass}
-                        required
-                      />
-                      {errors.effectiveFrom && (
-                        <p className="mt-1 text-xs text-rose-600">{errors.effectiveFrom}</p>
-                      )}
-                    </div>
-
-                    {/* Effective To */}
-                    <div>
-                      <label
-                        htmlFor="effectiveTo"
-                        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
-                      >
-                        Effective To
-                        <span className="ml-1 font-normal text-slate-400">
-                          (Optional)
+                {/* 2. Tutor & Tutor Change Section */}
+                {(!editingChild || editSection === "all" || editSection === "tutor") && (
+                  <div className="space-y-3.5 rounded-2xl border border-blue-200/80 bg-blue-50/40 p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-2 pb-1 border-b border-blue-100">
+                      <div className="flex items-center gap-2">
+                        <UserCheck size={16} className="text-blue-600" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          {editingChild ? "Change Assigned Tutor" : "Assigned Tutor"}
+                        </h3>
+                      </div>
+                      {editingChild?.tutorName && (
+                        <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                          Current: {editingChild.tutorName}
                         </span>
-                      </label>
-                      <input
-                        id="effectiveTo"
-                        type="date"
-                        min={effectiveFrom || undefined}
-                        value={effectiveTo}
-                        disabled={submitting}
-                        onChange={(e) => {
-                          setEffectiveTo(e.target.value);
-                          setErrors((prev) => ({ ...prev, effectiveTo: "" }));
-                        }}
-                        className={inputClass}
-                      />
-                      {errors.effectiveTo && (
-                        <p className="mt-1 text-xs text-rose-600">{errors.effectiveTo}</p>
                       )}
                     </div>
-                  </div>
 
-                  <p className="mt-3 text-xs text-slate-500">
-                    Schedules are submitted with &quot;Pending&quot; status and become active once accepted by your tutor.
-                  </p>
-                </div>
+                    {editingChild && (
+                      <div className="rounded-xl border border-blue-100 bg-white p-3 text-xs space-y-1 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Currently Assigned
+                          </span>
+                          <span className="font-bold text-blue-700">{editingChild.tutorName || "None"}</span>
+                        </div>
+                        {editingChild.tutorEmail ? (
+                          <p className="text-slate-600 text-[11px]">
+                            Registered Email: <span className="font-mono text-slate-800">{editingChild.tutorEmail}</span>
+                          </p>
+                        ) : null}
+                        <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                          To change this student&apos;s tutor, enter the new tutor&apos;s registered email address below. You can verify it first before saving.
+                        </p>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className={labelClass} htmlFor="tutorEmail">
+                        {editingChild ? "Tutor Email (Enter new email to change tutor) *" : "Tutor email *"}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          id="tutorEmail"
+                          name="tutorEmail"
+                          type="email"
+                          value={formData.tutorEmail}
+                          onChange={handleChange}
+                          placeholder="Enter registered tutor's email"
+                          className={inputClass}
+                          autoComplete="email"
+                          disabled={submitting}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleVerifyTutor(formData.tutorEmail)}
+                          disabled={submitting || verifyingTutor || !formData.tutorEmail}
+                          className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 shadow-2xs transition disabled:opacity-50 active:scale-95"
+                          title="Verify tutor exists on ClassSure"
+                        >
+                          {verifyingTutor ? (
+                            <>
+                              <RefreshCw size={13} className="animate-spin text-blue-600" />
+                              <span>Checking...</span>
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck size={13} />
+                              <span>Verify</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {verifiedTutorInfo && (
+                        <div className="mt-2 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200/80 p-2.5 text-xs text-emerald-800 animate-in fade-in">
+                          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                          <div>
+                            <span className="font-semibold">Verified ClassSure Tutor:</span>{" "}
+                            <span>{verifiedTutorInfo.name}</span>{" "}
+                            <span className="font-mono text-[11px] text-emerald-700">({verifiedTutorInfo.email})</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {errors.tutorEmail && (
+                        <p className="mt-1 text-xs text-rose-600">{errors.tutorEmail}</p>
+                      )}
+                      <p className="mt-1 text-xs text-slate-500">
+                        Enter the email the tutor used to register on ClassSure.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Tuition Schedule Section */}
+                {(!editingChild || editSection === "all" || editSection === "schedule") && (
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-2 pb-1 border-b border-blue-100">
+                      <div className="flex items-center gap-2">
+                        <Clock size={16} className="text-blue-600" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          {editingChild ? "Edit Tuition Schedule & Timings" : "Tuition Schedule *"}
+                        </h3>
+                      </div>
+                      {editingChild?.schedule && (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          editingChild.schedule.status === "ACCEPTED"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${
+                            editingChild.schedule.status === "ACCEPTED" ? "bg-emerald-600" : "bg-amber-500 animate-pulse"
+                          }`} />
+                          Schedule: {editingChild.schedule.status || "PENDING"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Hourly Tuition Fee */}
+                    <div>
+                      <label className={labelClass} htmlFor="hourlyRate">
+                        Hourly Tuition Fee (₹/hour) *
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-sm font-semibold text-slate-400">
+                          ₹
+                        </span>
+                        <input
+                          id="hourlyRate"
+                          name="hourlyRate"
+                          type="number"
+                          min="1"
+                          step="any"
+                          value={hourlyRate}
+                          onChange={(e) => {
+                            setHourlyRate(e.target.value);
+                            setErrors((prev) => ({ ...prev, hourlyRate: "" }));
+                          }}
+                          placeholder="Enter hourly fee (e.g., 300)"
+                          className={`${inputClass} pl-8`}
+                          disabled={submitting}
+                          required
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        This rate will be used to calculate the tutor&apos;s earnings from verified teaching hours.
+                      </p>
+                      {errors.hourlyRate && (
+                        <p className="mt-1 text-xs text-rose-600">{errors.hourlyRate}</p>
+                      )}
+                    </div>
+
+                    {/* Recurring Class Days */}
+                    <div>
+                      <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                        Class Days *
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          "MONDAY",
+                          "TUESDAY",
+                          "WEDNESDAY",
+                          "THURSDAY",
+                          "FRIDAY",
+                          "SATURDAY",
+                          "SUNDAY",
+                        ].map((day) => {
+                          const selected = daysOfWeek.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              disabled={submitting}
+                              onClick={() => {
+                                setDaysOfWeek((previous) =>
+                                  selected
+                                    ? previous.filter((item) => item !== day)
+                                    : [...previous, day]
+                                );
+                                setErrors((prev) => ({ ...prev, daysOfWeek: "" }));
+                              }}
+                              className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
+                                selected
+                                  ? "border-blue-600 bg-blue-600 text-white shadow-xs"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40"
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              {day.charAt(0) + day.slice(1, 3).toLowerCase()}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {errors.daysOfWeek && (
+                        <p className="mt-1 text-xs text-rose-600">{errors.daysOfWeek}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                      {/* Start Time */}
+                      <div>
+                        <label
+                          htmlFor="startTime"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
+                        >
+                          Start Time *
+                        </label>
+                        <input
+                          id="startTime"
+                          type="time"
+                          value={startTime}
+                          disabled={submitting}
+                          onChange={(e) => {
+                            setStartTime(e.target.value);
+                            setErrors((prev) => ({ ...prev, startTime: "", endTime: "" }));
+                          }}
+                          className={inputClass}
+                          required
+                        />
+                        {errors.startTime && (
+                          <p className="mt-1 text-xs text-rose-600">{errors.startTime}</p>
+                        )}
+                      </div>
+
+                      {/* End Time */}
+                      <div>
+                        <label
+                          htmlFor="endTime"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
+                        >
+                          End Time *
+                        </label>
+                        <input
+                          id="endTime"
+                          type="time"
+                          value={endTime}
+                          disabled={submitting}
+                          onChange={(e) => {
+                            setEndTime(e.target.value);
+                            setErrors((prev) => ({ ...prev, endTime: "" }));
+                          }}
+                          className={inputClass}
+                          required
+                        />
+                        {errors.endTime && (
+                          <p className="mt-1 text-xs text-rose-600">{errors.endTime}</p>
+                        )}
+                      </div>
+
+                      {/* Effective From */}
+                      <div>
+                        <label
+                          htmlFor="effectiveFrom"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
+                        >
+                          Effective From *
+                        </label>
+                        <input
+                          id="effectiveFrom"
+                          type="date"
+                          value={effectiveFrom}
+                          disabled={submitting}
+                          onChange={(e) => {
+                            setEffectiveFrom(e.target.value);
+                            setErrors((prev) => ({ ...prev, effectiveFrom: "", effectiveTo: "" }));
+                          }}
+                          className={inputClass}
+                          required
+                        />
+                        {errors.effectiveFrom && (
+                          <p className="mt-1 text-xs text-rose-600">{errors.effectiveFrom}</p>
+                        )}
+                      </div>
+
+                      {/* Effective To */}
+                      <div>
+                        <label
+                          htmlFor="effectiveTo"
+                          className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600"
+                        >
+                          Effective To
+                          <span className="ml-1 font-normal text-slate-400">
+                            (Optional)
+                          </span>
+                        </label>
+                        <input
+                          id="effectiveTo"
+                          type="date"
+                          min={effectiveFrom || undefined}
+                          value={effectiveTo}
+                          disabled={submitting}
+                          onChange={(e) => {
+                            setEffectiveTo(e.target.value);
+                            setErrors((prev) => ({ ...prev, effectiveTo: "" }));
+                          }}
+                          className={inputClass}
+                        />
+                        {errors.effectiveTo && (
+                          <p className="mt-1 text-xs text-rose-600">{errors.effectiveTo}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-xs text-slate-500">
+                      Schedules are submitted with &quot;Pending&quot; status and become active once accepted by your tutor.
+                    </p>
+                  </div>
+                )}
 
                 {message && (
                   <p className="rounded-xl bg-blue-50 p-3.5 text-xs sm:text-sm text-blue-700 border border-blue-200">

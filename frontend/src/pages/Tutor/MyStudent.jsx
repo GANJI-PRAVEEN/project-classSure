@@ -29,8 +29,20 @@ function MyStudents() {
         setError("");
         const res = await getAllTutorStudentsAPI(currentUser.id);
         if (res.ok) {
-          const data = await res.json();
-          const studentList = Array.isArray(data) ? data : [];
+          const rawList = Array.isArray(data) ? data : [];
+          const seenIds = new Set();
+          const seenKeys = new Set();
+          const studentList = rawList.filter((st) => {
+            const stId = String(st.id ?? st._id ?? "");
+            const pId = String(st.parentId || "");
+            const name = (st.name || "").trim().toLowerCase();
+            const key = `${pId}_${name}`;
+            if (stId && seenIds.has(stId)) return false;
+            if (name && seenKeys.has(key)) return false;
+            if (stId) seenIds.add(stId);
+            if (name) seenKeys.add(key);
+            return true;
+          });
 
           const enriched = await Promise.all(
             studentList.map(async (student) => {

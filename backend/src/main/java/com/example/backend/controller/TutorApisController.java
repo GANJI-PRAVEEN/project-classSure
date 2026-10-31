@@ -34,7 +34,38 @@ public class TutorApisController {
     @GetMapping("/get-students/{tutorId}")
     public List<Children> getAllStudents(@PathVariable String tutorId){
         System.out.println("Received Id "+tutorId);
-        return childrenRepo.findAllByTutorId(tutorId);
+        List<Children> directStudents = childrenRepo.findAllByTutorId(tutorId);
+        List<Schedule> acceptedSchedules = schedulesRepo.findAllByTutorIdAndStatus(tutorId, "ACCEPTED");
+
+        Map<String, Children> uniqueStudents = new LinkedHashMap<>();
+
+        // 1. Add students with confirmed schedules
+        if (acceptedSchedules != null) {
+            for (Schedule s : acceptedSchedules) {
+                if (s.getChildId() != null && !s.getChildId().trim().isEmpty()) {
+                    childrenRepo.findById(s.getChildId()).ifPresent(child -> {
+                        String key = (child.getParentId() != null ? child.getParentId() : "") + "_" + 
+                                     (child.getName() != null ? child.getName().trim().toLowerCase() : child.getId());
+                        if (key != null && !uniqueStudents.containsKey(key)) {
+                            uniqueStudents.put(key, child);
+                        }
+                    });
+                }
+            }
+        }
+
+        // 2. Add direct students from children table (deduplicated by parentId + name)
+        if (directStudents != null) {
+            for (Children child : directStudents) {
+                String key = (child.getParentId() != null ? child.getParentId() : "") + "_" + 
+                             (child.getName() != null ? child.getName().trim().toLowerCase() : child.getId());
+                if (key != null && !uniqueStudents.containsKey(key)) {
+                    uniqueStudents.put(key, child);
+                }
+            }
+        }
+
+        return new ArrayList<>(uniqueStudents.values());
     }
 
     @GetMapping("get-pending-requests")
@@ -389,14 +420,28 @@ public class TutorApisController {
                     "data", Collections.emptyList()
             ));
         }
-        //6. Get today tuitions only
-        List<Session> todaySessions = availableTuitions.stream()
-                .filter(session ->
-                        session.getSessionDate()!=null
-                        && session.getSessionDate().equals(today)
-                )
-                .sorted(Comparator.comparing(Session::getScheduleStart, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
+        //6. Get today tuitions only, deduplicated by scheduleId or childId+time
+        Map<String, Session> uniqueSessions = new LinkedHashMap<>();
+        for (Session session : availableTuitions) {
+            if (session.getSessionDate() != null && session.getSessionDate().equals(today)) {
+                String key = session.getId();
+                if (session.getScheduleId() != null && !session.getScheduleId().trim().isEmpty()) {
+                    key = "sched_" + session.getScheduleId();
+                } else if (session.getChildId() != null && session.getScheduleStart() != null) {
+                    key = "child_" + session.getChildId() + "_" + session.getScheduleStart();
+                }
+                if (key != null && !uniqueSessions.containsKey(key)) {
+                    uniqueSessions.put(key, session);
+                } else if (key != null) {
+                    Session existing = uniqueSessions.get(key);
+                    if (existing != null && existing.getSessionStatus() == SessionStatus.UPCOMING && session.getSessionStatus() != SessionStatus.UPCOMING) {
+                        uniqueSessions.put(key, session);
+                    }
+                }
+            }
+        }
+        List<Session> todaySessions = new ArrayList<>(uniqueSessions.values());
+        todaySessions.sort(Comparator.comparing(Session::getScheduleStart, Comparator.nullsLast(Comparator.naturalOrder())));
         return ResponseEntity.ok(Map.of(
                 "message", "Today's sessions fetched successfully",
                 "data", todaySessions

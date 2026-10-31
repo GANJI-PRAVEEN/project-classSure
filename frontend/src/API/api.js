@@ -87,14 +87,34 @@ export async function updateChildAPI(childId, childrenPayload) {
 }
 
 export async function updateScheduleAPI(scheduleId, schedulePayload) {
-    return fetch(`${BASE_URL}/api/parent/update-schedule/${scheduleId}`, {
-        method: "PUT",
-        headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeader()
-        },
-        body: JSON.stringify(schedulePayload)
-    });
+    try {
+        const res = await fetch(`${BASE_URL}/api/parent/update-schedule/${scheduleId}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify(schedulePayload)
+        });
+        if (res.ok) return res;
+        return await fetch(`${BASE_URL}/api/parent/save-schedule`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify({ ...schedulePayload, id: scheduleId })
+        });
+    } catch {
+        return await fetch(`${BASE_URL}/api/parent/save-schedule`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify({ ...schedulePayload, id: scheduleId })
+        });
+    }
 }
 
 export async function getEducationCategoryByIdAPI(id) {

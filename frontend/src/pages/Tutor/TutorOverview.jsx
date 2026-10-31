@@ -349,9 +349,24 @@ export default function TutorOverview({
         }
       }
 
+      // Deduplicate today's sessions before hydrating
+      const uniqueSessionsList = [];
+      const seenSessionKeys = new Set();
+      for (const s of sessions) {
+        const sId = String(s.id || s._id || "");
+        const schedId = String(s.scheduleId || "");
+        const childId = String(s.childId || "");
+        const start = String(s.scheduleStart || s.startTime || "");
+        const key = schedId ? `sched_${schedId}` : sId ? `id_${sId}` : `child_${childId}_${start}`;
+        if (!seenSessionKeys.has(key)) {
+          seenSessionKeys.add(key);
+          uniqueSessionsList.push(s);
+        }
+      }
+
       // Enrich today's sessions
       const enrichedSessions = await Promise.all(
-        sessions.map((s) => hydrateSession(s, completedMap))
+        uniqueSessionsList.map((s) => hydrateSession(s, completedMap))
       );
 
       enrichedSessions.sort((a, b) => {
@@ -361,17 +376,35 @@ export default function TutorOverview({
       });
       setTodaySessions(enrichedSessions);
 
-      // 3. Process Assigned Students
+      // 3. Process Assigned Students (Deduplicated by ID and Parent+Name)
       if (studentsRes && studentsRes.ok) {
         try {
           const sJson = await studentsRes.json();
-          setStudents(Array.isArray(sJson) ? sJson : Array.isArray(sJson.data) ? sJson.data : []);
+          const rawStudents = Array.isArray(sJson)
+            ? sJson
+            : Array.isArray(sJson.data)
+            ? sJson.data
+            : [];
+          const seenStudentIds = new Set();
+          const seenStudentKeys = new Set();
+          const uniqueStudents = rawStudents.filter((st) => {
+            const stId = String(st.id || st._id || "");
+            const pId = String(st.parentId || "");
+            const name = (st.name || "").trim().toLowerCase();
+            const key = `${pId}_${name}`;
+            if (stId && seenStudentIds.has(stId)) return false;
+            if (name && seenStudentKeys.has(key)) return false;
+            if (stId) seenStudentIds.add(stId);
+            if (name) seenStudentKeys.add(key);
+            return true;
+          });
+          setStudents(uniqueStudents);
         } catch (e) {
           console.warn("Could not parse students list:", e);
         }
       }
 
-      // 4. Process Pending Requests
+      // 4. Process Pending Requests (Deduplicated by ID / Schedule)
       if (pendingRes && pendingRes.ok) {
         try {
           const pJson = await pendingRes.json();
@@ -380,7 +413,17 @@ export default function TutorOverview({
             : Array.isArray(pJson)
             ? pJson
             : [];
-          const enrichedReqs = await hydratePendingRequests(rawReqs);
+          const seenReqKeys = new Set();
+          const uniqueReqs = rawReqs.filter((r) => {
+            const rId = String(r.id || r._id || "");
+            const childId = String(r.childId || "");
+            const start = String(r.startTime || "");
+            const key = rId ? `req_${rId}` : `req_${childId}_${start}`;
+            if (seenReqKeys.has(key)) return false;
+            seenReqKeys.add(key);
+            return true;
+          });
+          const enrichedReqs = await hydratePendingRequests(uniqueReqs);
           setPendingRequests(enrichedReqs);
         } catch (e) {
           console.warn("Could not parse pending requests:", e);
@@ -963,57 +1006,6 @@ export default function TutorOverview({
                 </p>
               </div>
             </div>
-
-            {/* Active Live Session Highlight Banner if teaching right now */}
-            {liveSession && (
-              <div className="rounded-2xl border-2 border-blue-500 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 p-5 sm:p-6 text-white shadow-md">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div className="flex items-center gap-3.5">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-xs text-white">
-                      <Radio size={24} className="animate-pulse" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center rounded-md bg-white/25 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">
-                          Live In Progress
-                        </span>
-                        <span className="text-xs text-blue-100">
-                          Student: {liveSession.student?.name || "Student"}
-                        </span>
-                      </div>
-                      <h3 className="mt-1 text-xl sm:text-2xl font-black tracking-tight">
-                        Class Session Underway
-                      </h3>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 self-start md:self-auto">
-                    <div className="rounded-xl bg-black/25 px-4 py-2 border border-white/10 backdrop-blur-xs text-center">
-                      <p className="text-[10px] font-medium uppercase tracking-wider text-blue-200">
-                        Elapsed Time
-                      </p>
-                      <p className="font-mono text-xl sm:text-2xl font-black tracking-wider">
-                        {liveDurationText}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={parentEndingId === liveSession.id}
-                      onClick={() => onEndSession && onEndSession(liveSession)}
-                      className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-rose-700 shadow-md hover:bg-rose-50 transition active:scale-95 disabled:opacity-60"
-                    >
-                      {parentEndingId === liveSession.id ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-rose-700 border-t-transparent" />
-                      ) : (
-                        <Square size={14} className="fill-rose-700 text-rose-700" />
-                      )}
-                      <span>End Class</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Today Sessions Cards */}
             {todaySessions.length === 0 ? (

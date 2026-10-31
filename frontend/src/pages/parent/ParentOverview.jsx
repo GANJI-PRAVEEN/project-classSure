@@ -99,15 +99,25 @@ export default function ParentOverview({ onNavigateToTab }) {
         getPendingReviewSessionsAPI().catch(() => null),
       ]);
 
-      // Parse children
+      // Parse children (Deduplicated by ID and normalized name)
       const childrenMap = new Map();
       let rawChildren = [];
       if (childRes && childRes.ok) {
         try {
           const cData = await childRes.json();
           if (Array.isArray(cData)) {
-            rawChildren = cData;
-            cData.forEach((c) => {
+            const seenChildIds = new Set();
+            const seenChildNames = new Set();
+            rawChildren = cData.filter((c) => {
+              const id = String(c.id || c._id || "");
+              const normName = (c.name || "").trim().toLowerCase();
+              if (id && seenChildIds.has(id)) return false;
+              if (normName && seenChildNames.has(normName)) return false;
+              if (id) seenChildIds.add(id);
+              if (normName) seenChildNames.add(normName);
+              return true;
+            });
+            rawChildren.forEach((c) => {
               const id = String(c.id || c._id || "");
               if (id) childrenMap.set(id, c);
             });
@@ -192,12 +202,38 @@ export default function ParentOverview({ onNavigateToTab }) {
         return true;
       });
 
-      // Combine today's sessions with active schedules not yet created as session
+      // Combine today's sessions with active schedules without introducing duplicates
       const existingScheduleIds = new Set(todaySessionsList.map((s) => String(s.scheduleId || "")).filter(Boolean));
-      const combinedToday = [...todaySessionsList];
+      const existingChildTimeKeys = new Set(
+        todaySessionsList.map((s) => {
+          const cId = String(s.childId || "");
+          const time = s.startTime || (s.scheduleStart ? String(s.scheduleStart).slice(11, 16) : "");
+          return `${cId}_${time}`;
+        })
+      );
+
+      const combinedToday = [];
+      const seenCombinedKeys = new Set();
+
+      for (const s of todaySessionsList) {
+        const sId = String(s.id || s._id || "");
+        const schedId = String(s.scheduleId || "");
+        const cId = String(s.childId || "");
+        const time = s.startTime || (s.scheduleStart ? String(s.scheduleStart).slice(11, 16) : "");
+        const key = schedId ? `sched_${schedId}` : sId ? `id_${sId}` : `c_${cId}_${time}`;
+        if (!seenCombinedKeys.has(key)) {
+          seenCombinedKeys.add(key);
+          combinedToday.push(s);
+        }
+      }
+
       activeTodaySchedules.forEach((sched) => {
         const schedId = String(sched.id || sched._id || "");
-        if (!existingScheduleIds.has(schedId)) {
+        const childId = String(sched.childId || "");
+        const timeKey = `${childId}_${String(sched.startTime || "").slice(0, 5)}`;
+        const key = `sched_${schedId}`;
+        if (!existingScheduleIds.has(schedId) && !existingChildTimeKeys.has(timeKey) && !seenCombinedKeys.has(key)) {
+          seenCombinedKeys.add(key);
           combinedToday.push({
             id: `sched_${schedId}`,
             scheduleId: schedId,
@@ -213,16 +249,23 @@ export default function ParentOverview({ onNavigateToTab }) {
         }
       });
 
-      // Parse pending review sessions
+      // Parse pending review sessions (Deduplicated)
       let pendingList = [];
       if (pendingRes && pendingRes.ok) {
         try {
           const pJson = await pendingRes.json();
-          pendingList = Array.isArray(pJson.data)
+          const rawPending = Array.isArray(pJson.data)
             ? pJson.data
             : Array.isArray(pJson)
             ? pJson
             : [];
+          const seenPendingIds = new Set();
+          pendingList = rawPending.filter((p) => {
+            const pId = String(p.id || p._id || p.sessionId || "");
+            if (pId && seenPendingIds.has(pId)) return false;
+            if (pId) seenPendingIds.add(pId);
+            return true;
+          });
         } catch (e) {
           console.warn("Could not parse pending reviews:", e);
         }

@@ -659,16 +659,40 @@ export default function TodaysTuitions({ onNavigateToTab }) {
         return sessionDate === todayKolkataDateStr;
       });
 
-      // Combine today's sessions with any active accepted schedules not yet in session repo
+      // Combine today's sessions with any active accepted schedules without introducing duplicates
       const existingScheduleIds = new Set(
         todaySessions.map((s) => String(s.scheduleId || "")).filter(Boolean)
       );
+      const existingChildTimeKeys = new Set(
+        todaySessions.map((s) => {
+          const cId = String(s.childId || "");
+          const time = s.startTime || (s.scheduleStart ? String(s.scheduleStart).slice(11, 16) : "");
+          return `${cId}_${time}`;
+        })
+      );
 
-      const combinedSessions = [...todaySessions];
+      const combinedSessions = [];
+      const seenCombinedKeys = new Set();
+
+      for (const s of todaySessions) {
+        const sId = String(s.id || s._id || "");
+        const schedId = String(s.scheduleId || "");
+        const cId = String(s.childId || "");
+        const time = s.startTime || (s.scheduleStart ? String(s.scheduleStart).slice(11, 16) : "");
+        const key = schedId ? `sched_${schedId}` : sId ? `id_${sId}` : `c_${cId}_${time}`;
+        if (!seenCombinedKeys.has(key)) {
+          seenCombinedKeys.add(key);
+          combinedSessions.push(s);
+        }
+      }
 
       activeTodaySchedules.forEach((sched) => {
         const schedId = String(sched.id || sched._id || "");
-        if (!existingScheduleIds.has(schedId)) {
+        const childId = String(sched.childId || "");
+        const timeKey = `${childId}_${String(sched.startTime || "").slice(0, 5)}`;
+        const key = `sched_${schedId}`;
+        if (!existingScheduleIds.has(schedId) && !existingChildTimeKeys.has(timeKey) && !seenCombinedKeys.has(key)) {
+          seenCombinedKeys.add(key);
           combinedSessions.push({
             id: `sched_${schedId}`,
             scheduleId: schedId,
