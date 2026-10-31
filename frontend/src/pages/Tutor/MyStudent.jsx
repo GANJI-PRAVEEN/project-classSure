@@ -29,7 +29,12 @@ function MyStudents() {
         setError("");
         const res = await getAllTutorStudentsAPI(currentUser.id);
         if (res.ok) {
-          const rawList = Array.isArray(data) ? data : [];
+          const resData = await res.json();
+          const rawList = Array.isArray(resData)
+            ? resData
+            : Array.isArray(resData?.data)
+            ? resData.data
+            : [];
           const seenIds = new Set();
           const seenKeys = new Set();
           const studentList = rawList.filter((st) => {
