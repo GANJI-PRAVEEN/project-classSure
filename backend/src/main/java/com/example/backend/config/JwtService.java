@@ -38,6 +38,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(email)
                 .issuedAt(new Date(now))
+                .expiration(new Date(now+1000 * 60 * 60))
                 .signWith(getKey())
                 .compact();
     }
