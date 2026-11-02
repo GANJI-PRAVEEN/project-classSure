@@ -378,8 +378,15 @@ public class ParentApisController {
             completedTuitionsList = new ArrayList<>(completedTuitionsList);
         }
 
+        Set<String> existingSessionIds = new HashSet<>();
+        for (CompletedTuitions ct : completedTuitionsList) {
+            if (ct.getSessionId() != null) {
+                existingSessionIds.add(ct.getSessionId());
+            }
+        }
+
         for (Session s : sessionList) {
-            if (s.getSessionStatus() == SessionStatus.APPROVED && completedTuitionsRepo.findBySessionId(s.getId()).isEmpty()) {
+            if (s.getSessionStatus() == SessionStatus.APPROVED && !existingSessionIds.contains(s.getId())) {
                 double durationHours = (s.getCorrectedDurationMinutes() != null && s.getCorrectedDurationMinutes() > 0)
                         ? (s.getCorrectedDurationMinutes() / 60.0)
                         : ((s.getActualStart() != null && s.getActualEnd() != null)
@@ -402,6 +409,7 @@ public class ParentApisController {
                     ct.setApprovedAt(java.time.Instant.now());
                     completedTuitionsRepo.save(ct);
                     completedTuitionsList.add(ct);
+                    existingSessionIds.add(s.getId());
                 }
             }
         }

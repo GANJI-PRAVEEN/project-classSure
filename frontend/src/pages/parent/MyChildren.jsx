@@ -1016,22 +1016,20 @@ export default function MyChildren() {
                     <div className="flex items-center justify-between w-full xs:w-auto sm:w-full lg:w-auto pt-1 xs:pt-0 border-t xs:border-t-0 sm:border-t lg:border-t-0 border-slate-100 gap-2 shrink-0">
                       {schedule ? (
                         <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border shadow-2xs ${
-                            isPending
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border shadow-2xs ${isPending
                               ? "border-amber-200/80 bg-amber-50 text-amber-800"
                               : isActive
-                              ? "border-emerald-200/80 bg-emerald-50 text-emerald-800"
-                              : "border-slate-200 bg-slate-50 text-slate-700"
-                          }`}
+                                ? "border-emerald-200/80 bg-emerald-50 text-emerald-800"
+                                : "border-slate-200 bg-slate-50 text-slate-700"
+                            }`}
                         >
                           <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              isPending
+                            className={`h-1.5 w-1.5 rounded-full ${isPending
                                 ? "bg-amber-500 animate-pulse"
                                 : isActive
-                                ? "bg-emerald-500"
-                                : "bg-slate-400"
-                            }`}
+                                  ? "bg-emerald-500"
+                                  : "bg-slate-400"
+                              }`}
                           />
                           <span>{isPending ? "Pending Approval" : isActive ? "Active" : schedule.status}</span>
                         </span>
@@ -1178,11 +1176,10 @@ export default function MyChildren() {
                                 return (
                                   <span
                                     key={d}
-                                    className={`inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold transition ${
-                                      isClassDay
+                                    className={`inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold transition ${isClassDay
                                         ? "bg-blue-600 text-white shadow-2xs"
                                         : "bg-slate-100 text-slate-400 opacity-60"
-                                    }`}
+                                      }`}
                                   >
                                     {shortDay}
                                   </span>
@@ -1334,22 +1331,20 @@ export default function MyChildren() {
                 <button
                   type="button"
                   onClick={() => setEditSection("all")}
-                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap ${
-                    editSection === "all"
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap ${editSection === "all"
                       ? "bg-blue-600 text-white shadow-2xs"
                       : "text-slate-600 hover:bg-slate-200/60"
-                  }`}
+                    }`}
                 >
                   All Details
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditSection("child")}
-                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
-                    editSection === "child"
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${editSection === "child"
                       ? "bg-blue-600 text-white shadow-2xs"
                       : "text-slate-600 hover:bg-slate-200/60"
-                  }`}
+                    }`}
                 >
                   <GraduationCap size={13} />
                   <span>Student Info</span>
@@ -1357,18 +1352,16 @@ export default function MyChildren() {
                 <button
                   type="button"
                   onClick={() => setEditSection("tutor")}
-                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
-                    editSection === "tutor"
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${editSection === "tutor"
                       ? "bg-blue-600 text-white shadow-2xs"
                       : "text-slate-600 hover:bg-slate-200/60"
-                  }`}
+                    }`}
                 >
                   <UserCheck size={13} />
                   <span>Change Tutor</span>
                   {editingChild.tutorName && (
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
-                      editSection === "tutor" ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
-                    }`}>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${editSection === "tutor" ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-700"
+                      }`}>
                       {editingChild.tutorName.split(" ")[0]}
                     </span>
                   )}
@@ -1376,18 +1369,16 @@ export default function MyChildren() {
                 <button
                   type="button"
                   onClick={() => setEditSection("schedule")}
-                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
-                    editSection === "schedule"
+                  className={`rounded-lg px-3 py-1.5 font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${editSection === "schedule"
                       ? "bg-blue-600 text-white shadow-2xs"
                       : "text-slate-600 hover:bg-slate-200/60"
-                  }`}
+                    }`}
                 >
                   <Clock size={13} />
                   <span>Change Schedule</span>
                   {editingChild.schedule && (
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
-                      editSection === "schedule" ? "bg-blue-500 text-white" : "bg-emerald-100 text-emerald-800"
-                    }`}>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${editSection === "schedule" ? "bg-blue-500 text-white" : "bg-emerald-100 text-emerald-800"
+                      }`}>
                       {editingChild.schedule.status || "Set"}
                     </span>
                   )}
@@ -1547,11 +1538,10 @@ export default function MyChildren() {
                             return (
                               <label
                                 key={subjectId}
-                                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all ${
-                                  isChecked
+                                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all ${isChecked
                                     ? "border-blue-600 bg-blue-50/70 text-blue-700 shadow-xs"
                                     : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                                }`}
+                                  }`}
                               >
                                 <input
                                   type="checkbox"
@@ -1679,14 +1669,12 @@ export default function MyChildren() {
                         </h3>
                       </div>
                       {editingChild?.schedule && (
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          editingChild.schedule.status === "ACCEPTED"
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${editingChild.schedule.status === "ACCEPTED"
                             ? "bg-emerald-100 text-emerald-800"
                             : "bg-amber-100 text-amber-800"
-                        }`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${
-                            editingChild.schedule.status === "ACCEPTED" ? "bg-emerald-600" : "bg-amber-500 animate-pulse"
-                          }`} />
+                          }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${editingChild.schedule.status === "ACCEPTED" ? "bg-emerald-600" : "bg-amber-500 animate-pulse"
+                            }`} />
                           Schedule: {editingChild.schedule.status || "PENDING"}
                         </span>
                       )}
@@ -1755,11 +1743,10 @@ export default function MyChildren() {
                                 );
                                 setErrors((prev) => ({ ...prev, daysOfWeek: "" }));
                               }}
-                              className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
-                                selected
+                              className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${selected
                                   ? "border-blue-600 bg-blue-600 text-white shadow-xs"
                                   : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40"
-                              } disabled:cursor-not-allowed disabled:opacity-50`}
+                                } disabled:cursor-not-allowed disabled:opacity-50`}
                             >
                               {day.charAt(0) + day.slice(1, 3).toLowerCase()}
                             </button>
@@ -1910,8 +1897,8 @@ export default function MyChildren() {
                       ? "Updating..."
                       : "Saving..."
                     : editingChild
-                    ? "Save Changes"
-                    : "Save Child"}
+                      ? "Save Changes"
+                      : "Save Child"}
                 </button>
               </div>
             </form>

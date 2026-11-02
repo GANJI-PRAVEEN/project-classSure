@@ -4,10 +4,12 @@ package com.example.backend.controller;
 import com.example.backend.model.*;
 import com.example.backend.repo.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 @RestController
@@ -24,6 +26,15 @@ public class DataController {
     private SubjectRepo subjectRepo;
     @Autowired
     private Userrepo userrepo;
+
+    @GetMapping({"/health", "/ping"})
+    public ResponseEntity<?> healthCheck() {
+        return ResponseEntity.ok(Map.of(
+            "status", "UP",
+            "message", "Backend is active and warm",
+            "timestamp", System.currentTimeMillis()
+        ));
+    }
 
     @GetMapping("/degrees-data")
     public List<Degrees> getDegreeData(){

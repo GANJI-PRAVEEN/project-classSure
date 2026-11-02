@@ -134,15 +134,15 @@ export default function History() {
   /**
    * Main data fetching and enrichment workflow for Tutor
    */
-  const loadHistoryData = useCallback(async () => {
+  const loadHistoryData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
 
       // 1. Fetch tutor history and completed tuitions in parallel
       const [historyRes, completedRes] = await Promise.all([
-        getTutorHistoryAPI(),
-        getCompletedTuitionsAPI().catch(() => null),
+        getTutorHistoryAPI(forceRefresh),
+        getCompletedTuitionsAPI(forceRefresh).catch(() => null),
       ]);
 
       if (historyRes && historyRes.status === 401) {
@@ -640,7 +640,7 @@ export default function History() {
 
         <button
           type="button"
-          onClick={loadHistoryData}
+          onClick={() => loadHistoryData(true)}
           disabled={loading}
           className="inline-flex items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 transition disabled:opacity-50"
           title="Refresh history records"

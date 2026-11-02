@@ -89,12 +89,12 @@ export default function Requests() {
         fetchRequests();
     }, []);
 
-    async function fetchRequests() {
+    async function fetchRequests(forceRefresh = false) {
         try {
             setLoading(true);
             setError("");
 
-            const response = await getTutorPendingRequestAPI();
+            const response = await getTutorPendingRequestAPI(forceRefresh);
             const responseText = await response.text();
             const result = responseText ? JSON.parse(responseText) : {};
 

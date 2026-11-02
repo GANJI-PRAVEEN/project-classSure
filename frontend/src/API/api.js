@@ -1,3 +1,4 @@
+import { cachedFetch, CACHE_TTL, invalidateCache, clearAllApiCache } from "./apiCache.js";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 console.log("API Base URL:", BASE_URL);
@@ -7,21 +8,39 @@ function getAuthHeader() {
     return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function getAllChildrensAPI() {
-    return fetch(`${BASE_URL}/api/parent/get-childrens`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+// Re-export cache control functions
+export { invalidateCache, clearAllApiCache };
+
+export async function getAllChildrensAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/parent/get-childrens`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
-export async function getStaticEducationCategoryAPI() {
-    return fetch(`${BASE_URL}/static_data/education_category-data`);
+export async function getStaticEducationCategoryAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/static_data/education_category-data`,
+        { method: "GET" },
+        CACHE_TTL.STATIC_DATA,
+        forceRefresh
+    );
 }
 
-export async function getStaticSubjectsDataAPI() {
-    return fetch(`${BASE_URL}/static_data/subjects-data`);
+export async function getStaticSubjectsDataAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/static_data/subjects-data`,
+        { method: "GET" },
+        CACHE_TTL.STATIC_DATA,
+        forceRefresh
+    );
 }
 
 export async function validateTutorAPI(tutorEmail) {
@@ -36,7 +55,7 @@ export async function validateTutorAPI(tutorEmail) {
 }
 
 export async function saveChildAPI(childrenPayload) {
-    return fetch(`${BASE_URL}/api/parent/add-child`, {
+    const res = await fetch(`${BASE_URL}/api/parent/add-child`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -44,20 +63,29 @@ export async function saveChildAPI(childrenPayload) {
         },
         body: JSON.stringify(childrenPayload)
     });
+    if (res.ok) {
+        invalidateCache(["/api/parent/get-childrens", "/api/tutor/get-students", "get-student-details"]);
+    }
+    return res;
 }
 
 export async function deleteChildAPI(childId) {
-    return fetch(`${BASE_URL}/api/parent/delete-child/${childId}`, {
+    const res = await fetch(`${BASE_URL}/api/parent/delete-child/${childId}`, {
         method: "DELETE",
         headers: {
             ...getAuthHeader()
         }
     });
+    if (res.ok) {
+        invalidateCache(["/api/parent/get-childrens", "/api/tutor/get-students", "get-student-details"]);
+    }
+    return res;
 }
 
 export async function updateChildAPI(childId, childrenPayload) {
+    let res;
     try {
-        const res = await fetch(`${BASE_URL}/api/parent/update-child/${childId}`, {
+        res = await fetch(`${BASE_URL}/api/parent/update-child/${childId}`, {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
@@ -65,17 +93,18 @@ export async function updateChildAPI(childId, childrenPayload) {
             },
             body: JSON.stringify(childrenPayload)
         });
-        if (res.ok) return res;
-        return await fetch(`${BASE_URL}/api/parent/add-child`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...getAuthHeader()
-            },
-            body: JSON.stringify({ ...childrenPayload, id: childId })
-        });
+        if (!res.ok) {
+            res = await fetch(`${BASE_URL}/api/parent/add-child`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...getAuthHeader()
+                },
+                body: JSON.stringify({ ...childrenPayload, id: childId })
+            });
+        }
     } catch {
-        return await fetch(`${BASE_URL}/api/parent/add-child`, {
+        res = await fetch(`${BASE_URL}/api/parent/add-child`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -84,11 +113,16 @@ export async function updateChildAPI(childId, childrenPayload) {
             body: JSON.stringify({ ...childrenPayload, id: childId })
         });
     }
+    if (res && res.ok) {
+        invalidateCache(["/api/parent/get-childrens", "/api/tutor/get-students", "get-student-details"]);
+    }
+    return res;
 }
 
 export async function updateScheduleAPI(scheduleId, schedulePayload) {
+    let res;
     try {
-        const res = await fetch(`${BASE_URL}/api/parent/update-schedule/${scheduleId}`, {
+        res = await fetch(`${BASE_URL}/api/parent/update-schedule/${scheduleId}`, {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
@@ -96,17 +130,18 @@ export async function updateScheduleAPI(scheduleId, schedulePayload) {
             },
             body: JSON.stringify(schedulePayload)
         });
-        if (res.ok) return res;
-        return await fetch(`${BASE_URL}/api/parent/save-schedule`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...getAuthHeader()
-            },
-            body: JSON.stringify({ ...schedulePayload, id: scheduleId })
-        });
+        if (!res.ok) {
+            res = await fetch(`${BASE_URL}/api/parent/save-schedule`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...getAuthHeader()
+                },
+                body: JSON.stringify({ ...schedulePayload, id: scheduleId })
+            });
+        }
     } catch {
-        return await fetch(`${BASE_URL}/api/parent/save-schedule`, {
+        res = await fetch(`${BASE_URL}/api/parent/save-schedule`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -115,52 +150,75 @@ export async function updateScheduleAPI(scheduleId, schedulePayload) {
             body: JSON.stringify({ ...schedulePayload, id: scheduleId })
         });
     }
+    if (res && res.ok) {
+        invalidateCache(["/schedules", "/get-schedules", "/get-today-sessions", "/get-pending-requests"]);
+    }
+    return res;
 }
 
-export async function getEducationCategoryByIdAPI(id) {
-    return fetch(`${BASE_URL}/static_data/education_category_id`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "text/plain",
+export async function getEducationCategoryByIdAPI(id, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/static_data/education_category_id`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "text/plain",
+            },
+            body: id
         },
-        body: id
-    });
+        CACHE_TTL.STATIC_DATA,
+        forceRefresh
+    );
 }
 
-export async function getBoardByIdAPI(id) {
-    return fetch(`${BASE_URL}/static_data/get-board-id`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
+export async function getBoardByIdAPI(id, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/static_data/get-board-id`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: typeof id === "string" ? id : JSON.stringify(id)
         },
-        body: id
-    });
+        CACHE_TTL.STATIC_DATA,
+        forceRefresh
+    );
 }
 
-export async function getSubjectsByIdsAPI(subjectIds) {
-    return fetch(`${BASE_URL}/static_data/get-subjects-withIds`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeader()
+export async function getSubjectsByIdsAPI(subjectIds, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/static_data/get-subjects-withIds`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader()
+            },
+            body: JSON.stringify(subjectIds)
         },
-        body: JSON.stringify(subjectIds)
-    });
+        CACHE_TTL.STATIC_DATA,
+        forceRefresh
+    );
 }
 
-
-export async function getTutorByIdAPI(tutorId) {
-    return fetch(`${BASE_URL}/static_data/get-tutor-id`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
+export async function getTutorByIdAPI(tutorId, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/static_data/get-tutor-id`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(tutorId)
         },
-        body: JSON.stringify(tutorId)
-    });
+        CACHE_TTL.ENTITY_DETAILS,
+        forceRefresh
+    );
 }
 
 export async function saveTempScheduleAPI(schedulePayload) {
-    return fetch(`${BASE_URL}/api/parent/save-schedule`, {
+    const res = await fetch(`${BASE_URL}/api/parent/save-schedule`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -168,73 +226,112 @@ export async function saveTempScheduleAPI(schedulePayload) {
         },
         body: JSON.stringify(schedulePayload)
     });
+    if (res.ok) {
+        invalidateCache(["/schedules", "/get-schedules", "/get-pending-requests", "/get-today-sessions"]);
+    }
+    return res;
 }
 
-export async function getSchedulesAPI() {
-    return fetch(`${BASE_URL}/api/parent/get-schedules`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getSchedulesAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/parent/get-schedules`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
-export async function getScheduleByChildIdAPI(childId) {
-    return fetch(`${BASE_URL}/api/tutor/get-schedule/${childId}`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getScheduleByChildIdAPI(childId, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-schedule/${childId}`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
-export async function getAllTutorStudentsAPI(tutorId) {
-    return fetch(`${BASE_URL}/api/tutor/get-students/${tutorId}`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getAllTutorStudentsAPI(tutorId, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-students/${tutorId}`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
-export async function getTutorPendingRequestAPI() {
-    return fetch(`${BASE_URL}/api/tutor/get-pending-requests`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getTutorPendingRequestAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-pending-requests`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
-export async function getTutorSchedulesAPI() {
-    return fetch(`${BASE_URL}/api/tutor/get-schedules`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getTutorSchedulesAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-schedules`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
-export async function getParentDetailsAPI(parentId) {
-    return fetch(`${BASE_URL}/api/tutor/get-parent-details/${parentId}`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getParentDetailsAPI(parentId, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-parent-details/${parentId}`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.ENTITY_DETAILS,
+        forceRefresh
+    );
 }
 
-export async function getStudentDetailsAPI(studentId) {
-    return fetch(`${BASE_URL}/api/tutor/get-student-details/${studentId}`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getStudentDetailsAPI(studentId, forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-student-details/${studentId}`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.ENTITY_DETAILS,
+        forceRefresh
+    );
 }
 
 export async function updateScheduleStatusAPI(scheduleId, status) {
-    return fetch(`${BASE_URL}/api/tutor/update-schedule-status/${scheduleId}`, {
+    const res = await fetch(`${BASE_URL}/api/tutor/update-schedule-status/${scheduleId}`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
@@ -242,6 +339,16 @@ export async function updateScheduleStatusAPI(scheduleId, status) {
         },
         body: JSON.stringify({ status })
     });
+    if (res.ok) {
+        invalidateCache([
+            "/get-pending-requests",
+            "/get-schedules",
+            "/get-students",
+            "/get-today-sessions",
+            "/completed-tuitions"
+        ]);
+    }
+    return res;
 }
 
 /**
@@ -261,83 +368,128 @@ export function calculateSessionEarnings(hourlyRate, verifiedPayableMinutes) {
     return Number(((rate * minutes) / 60).toFixed(2));
 }
 
-export async function getTodaySessionsAPI() {
-    return fetch(`${BASE_URL}/api/tutor/get-today-sessions`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getTodaySessionsAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-today-sessions`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
-export async function getParentTodaySessionsAPI() {
-    return fetch(`${BASE_URL}/api/parent/get-today-sessions`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+export async function getParentTodaySessionsAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/parent/get-today-sessions`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
+
 export async function startSessionAPI(sessionId) {
-    return fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/start`, {
+    const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/start`, {
         method: "POST",
         headers: {
             ...getAuthHeader()
         }
     });
+    if (res.ok) {
+        invalidateCache(["/get-today-sessions", "/get-tutor-history", "/completed-tuitions"]);
+    }
+    return res;
 }
+
 export async function endSessionAPI(sessionId) {
-    return fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/end`, {
+    const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/end`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             ...getAuthHeader()
         }
     });
+    if (res.ok) {
+        invalidateCache([
+            "/get-today-sessions",
+            "/pending-sessions",
+            "/get-tutor-history",
+            "/completed-tuitions"
+        ]);
+    }
+    return res;
 }
 
-export async function getPendingReviewSessionsAPI() {
+export async function getPendingReviewSessionsAPI(forceRefresh = false) {
     try {
-        const res = await fetch(`${BASE_URL}/api/parent/review/pending-sessions`, {
-            method: "GET",
-            headers: {
-                ...getAuthHeader()
-            }
-        });
+        const res = await cachedFetch(
+            `${BASE_URL}/api/parent/review/pending-sessions`,
+            {
+                method: "GET",
+                headers: {
+                    ...getAuthHeader()
+                }
+            },
+            CACHE_TTL.FEATURE_QUERIES,
+            forceRefresh
+        );
         if (res.status !== 404) {
             return res;
         }
     } catch {
         // Fall back to /review/pending-sessions
     }
-    return fetch(`${BASE_URL}/review/pending-sessions`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
-}
-
-export async function getReviewHistoryAPI() {
-    try {
-        const res = await fetch(`${BASE_URL}/api/parent/review/history`, {
+    return cachedFetch(
+        `${BASE_URL}/review/pending-sessions`,
+        {
             method: "GET",
             headers: {
                 ...getAuthHeader()
             }
-        });
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
+}
+
+export async function getReviewHistoryAPI(forceRefresh = false) {
+    try {
+        const res = await cachedFetch(
+            `${BASE_URL}/api/parent/review/history`,
+            {
+                method: "GET",
+                headers: {
+                    ...getAuthHeader()
+                }
+            },
+            CACHE_TTL.FEATURE_QUERIES,
+            forceRefresh
+        );
         if (res.status !== 404) {
             return res;
         }
     } catch {
         // Fall back
     }
-    return fetch(`${BASE_URL}/review/history`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
+    return cachedFetch(
+        `${BASE_URL}/review/history`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
 export async function approveSessionAPI(sessionId, payload = null) {
@@ -349,165 +501,203 @@ export async function approveSessionAPI(sessionId, payload = null) {
         },
         ...(payload ? { body: JSON.stringify(payload) } : {})
     };
+    let res;
     try {
-        const res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/approve`, options);
-        if (res.status !== 404) return res;
+        res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/approve`, options);
+        if (res.status === 404) {
+            res = await fetch(`${BASE_URL}/review/sessions/${sessionId}/approve`, options);
+        }
     } catch {
-        // Fall back to /review/sessions/${sessionId}/approve
+        res = await fetch(`${BASE_URL}/review/sessions/${sessionId}/approve`, options);
     }
-    return fetch(`${BASE_URL}/review/sessions/${sessionId}/approve`, options);
+    if (res && res.ok) {
+        invalidateCache([
+            "/pending-sessions",
+            "/completed-tuitions",
+            "/history",
+            "/get-parent-history",
+            "/get-today-sessions"
+        ]);
+    }
+    return res;
 }
 
 export async function correctSessionDurationAPI(sessionId, payload) {
-    try {
-        const res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/correct-duration`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...getAuthHeader()
-            },
-            body: JSON.stringify(payload)
-        });
-        if (res.status !== 404) return res;
-    } catch {
-        // Fall back to /review/sessions/${sessionId}/correct-duration
-    }
-    return fetch(`${BASE_URL}/review/sessions/${sessionId}/correct-duration`, {
+    const options = {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             ...getAuthHeader()
         },
         body: JSON.stringify(payload)
-    });
+    };
+    let res;
+    try {
+        res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/correct-duration`, options);
+        if (res.status === 404) {
+            res = await fetch(`${BASE_URL}/review/sessions/${sessionId}/correct-duration`, options);
+        }
+    } catch {
+        res = await fetch(`${BASE_URL}/review/sessions/${sessionId}/correct-duration`, options);
+    }
+    if (res && res.ok) {
+        invalidateCache([
+            "/pending-sessions",
+            "/completed-tuitions",
+            "/history",
+            "/get-parent-history",
+            "/get-today-sessions"
+        ]);
+    }
+    return res;
 }
 
 export async function disputeSessionAPI(sessionId, payload) {
-    try {
-        const res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/dispute`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...getAuthHeader()
-            },
-            body: JSON.stringify(payload)
-        });
-        if (res.status !== 404) return res;
-    } catch {
-        // Fall back to /review/sessions/${sessionId}/dispute
-    }
-    return fetch(`${BASE_URL}/review/sessions/${sessionId}/dispute`, {
+    const options = {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             ...getAuthHeader()
         },
         body: JSON.stringify(payload)
-    });
-}
-
-export async function getCompletedTuitionsAPI() {
-    return fetch(`${BASE_URL}/api/tutor/completed-tuitions`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader()
-        }
-    });
-}
-
-export async function getParentHistoryAPI() {
-    return fetch(`${BASE_URL}/api/parent/get-parent-history`, {
-        method: "GET",
-        headers: {
-            ...getAuthHeader(),
-        },
-    });
-}
-
-export async function getTutorHistoryAPI() {
+    };
+    let res;
     try {
-        const res = await fetch(`${BASE_URL}/api/tutor/get-tutor-history`, {
+        res = await fetch(`${BASE_URL}/api/parent/review/sessions/${sessionId}/dispute`, options);
+        if (res.status === 404) {
+            res = await fetch(`${BASE_URL}/review/sessions/${sessionId}/dispute`, options);
+        }
+    } catch {
+        res = await fetch(`${BASE_URL}/review/sessions/${sessionId}/dispute`, options);
+    }
+    if (res && res.ok) {
+        invalidateCache([
+            "/pending-sessions",
+            "/history",
+            "/get-tutor-history",
+            "/get-parent-history",
+            "/get-today-sessions"
+        ]);
+    }
+    return res;
+}
+
+export async function getCompletedTuitionsAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/completed-tuitions`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader()
+            }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
+}
+
+export async function getParentHistoryAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/parent/get-parent-history`,
+        {
             method: "GET",
             headers: {
                 ...getAuthHeader(),
             },
-        });
-        if (res.status !== 404) {
-            return res;
-        }
-    } catch {
-        // Fall back to alternative routes if network or routing differs
-    }
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
+}
+
+export async function getTutorHistoryAPI(forceRefresh = false) {
+    return cachedFetch(
+        `${BASE_URL}/api/tutor/get-tutor-history`,
+        {
+            method: "GET",
+            headers: {
+                ...getAuthHeader(),
+            },
+        },
+        CACHE_TTL.FEATURE_QUERIES,
+        forceRefresh
+    );
 }
 
 export async function submitTutorDisputeResponseAPI(sessionId, payload) {
-    try {
-        const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/dispute-response`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...getAuthHeader(),
-            },
-            body: JSON.stringify(payload),
-        });
-        if (res.status !== 404) {
-            return res;
-        }
-    } catch {
-        // Fall back
-    }
-
-    try {
-        const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/respond-dispute`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...getAuthHeader(),
-            },
-            body: JSON.stringify(payload),
-        });
-        if (res.status !== 404) {
-            return res;
-        }
-    } catch {
-        // Fall back
-    }
-
-    return fetch(`${BASE_URL}/api/tutor/dispute-response`, {
+    const options = {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeader(),
-        },
-        body: JSON.stringify({ sessionId, ...payload }),
-    });
-}
-
-export async function rescheduleSessionAPI(sessionId, payload) {
-    try {
-        const res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/reschedule`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...getAuthHeader(),
-            },
-            body: JSON.stringify(payload),
-        });
-        if (res.status !== 405) {
-            return res;
-        }
-    } catch {
-        // Fall through to PUT
-    }
-
-    return fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/reschedule`, {
-        method: "PUT",
         headers: {
             "Content-Type": "application/json",
             ...getAuthHeader(),
         },
         body: JSON.stringify(payload),
-    });
+    };
+    let res;
+    try {
+        res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/dispute-response`, options);
+        if (res.status === 404) {
+            res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/respond-dispute`, options);
+            if (res.status === 404) {
+                res = await fetch(`${BASE_URL}/api/tutor/dispute-response`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...getAuthHeader(),
+                    },
+                    body: JSON.stringify({ sessionId, ...payload }),
+                });
+            }
+        }
+    } catch {
+        res = await fetch(`${BASE_URL}/api/tutor/dispute-response`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+            },
+            body: JSON.stringify({ sessionId, ...payload }),
+        });
+    }
+    if (res && res.ok) {
+        invalidateCache(["/get-tutor-history", "/pending-sessions", "/history"]);
+    }
+    return res;
 }
 
-
+export async function rescheduleSessionAPI(sessionId, payload) {
+    let res;
+    try {
+        res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/reschedule`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+            },
+            body: JSON.stringify(payload),
+        });
+        if (res.status === 405) {
+            res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/reschedule`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...getAuthHeader(),
+                },
+                body: JSON.stringify(payload),
+            });
+        }
+    } catch {
+        res = await fetch(`${BASE_URL}/api/tutor/sessions/${sessionId}/reschedule`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+            },
+            body: JSON.stringify(payload),
+        });
+    }
+    if (res && res.ok) {
+        invalidateCache(["/get-today-sessions", "/get-schedules"]);
+    }
+    return res;
+}

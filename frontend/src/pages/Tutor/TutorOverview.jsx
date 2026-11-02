@@ -35,7 +35,9 @@ import {
   getSubjectsByIdsAPI,
   getBoardByIdAPI,
   startSessionAPI,
+  endSessionAPI,
   updateScheduleStatusAPI,
+  invalidateCache,
 } from "../../API/api.js";
 import {
   parseTimestamp,
@@ -116,6 +118,8 @@ export default function TutorOverview({
 
   // Action states for in-progress operations
   const [internalStartingId, setInternalStartingId] = useState(null);
+  const [internalEndingId, setInternalEndingId] = useState(null);
+  const [sessionToEnd, setSessionToEnd] = useState(null);
   const [requestActionLoading, setRequestActionLoading] = useState({});
   const [requestMessages, setRequestMessages] = useState({});
   const [actionError, setActionError] = useState("");
@@ -131,6 +135,7 @@ export default function TutorOverview({
   }, []);
 
   const startingId = parentStartingId || internalStartingId;
+  const endingId = parentEndingId || internalEndingId;
 
   // Hydrate single session with parent, student, subjects and board details
   const hydrateSession = useCallback(async (session, completedMap = new Map()) => {
@@ -285,7 +290,7 @@ export default function TutorOverview({
   }, []);
 
   // Fetch all overview data in parallel
-  const loadOverviewData = useCallback(async (isInitial = false) => {
+  const loadOverviewData = useCallback(async (isInitial = false, forceRefresh = false) => {
     try {
       if (isInitial) {
         setLoading(true);
@@ -306,11 +311,11 @@ export default function TutorOverview({
         pendingRes,
         schedulesRes,
       ] = await Promise.all([
-        getTodaySessionsAPI().catch(() => null),
-        getCompletedTuitionsAPI().catch(() => null),
-        tutorId ? getAllTutorStudentsAPI(tutorId).catch(() => null) : Promise.resolve(null),
-        getTutorPendingRequestAPI().catch(() => null),
-        getTutorSchedulesAPI().catch(() => null),
+        getTodaySessionsAPI(forceRefresh).catch(() => null),
+        getCompletedTuitionsAPI(forceRefresh).catch(() => null),
+        tutorId ? getAllTutorStudentsAPI(tutorId, forceRefresh).catch(() => null) : Promise.resolve(null),
+        getTutorPendingRequestAPI(forceRefresh).catch(() => null),
+        getTutorSchedulesAPI(forceRefresh).catch(() => null),
       ]);
 
       // 1. Process Completed Tuitions
@@ -463,44 +468,126 @@ export default function TutorOverview({
     }
   }, [refreshTrigger, loadOverviewData]);
 
-  // Handle Quick Start Timer directly from Overview
+  // Instant Optimistic Quick Start Timer directly from Overview (0 ms delay)
   async function handleStartTimer(session) {
-    if (onStartTimer) {
-      onStartTimer(session);
-      return;
-    }
     if (!session?.id || startingId) return;
+
+    // 1. Immediately update UI state in 0 ms so timer starts without network lag
+    const optimisticStart = new Date().toISOString();
+    setTodaySessions((prev) =>
+      prev.map((s) =>
+        s.id === session.id
+          ? {
+              ...s,
+              sessionStatus: "IN_PROGRESS",
+              actualStart: optimisticStart,
+            }
+          : s
+      )
+    );
 
     try {
       setInternalStartingId(session.id);
       setActionError("");
       const response = await startSessionAPI(session.id);
-      if (!response.ok) {
-        const text = await response.text();
-        let json = {};
+      const text = await response.text();
+      let json = {};
+      if (text && text.trim()) {
         try {
           json = JSON.parse(text);
         } catch {}
-        throw new Error(json.message || "Failed to start session");
       }
-      // Optimistic update
+
+      if (!response.ok) {
+        throw new Error(json.message || "Failed to start session on server");
+      }
+
+      const serverStart = json.data?.actualStart || optimisticStart;
+      setTodaySessions((prev) =>
+        prev.map((s) =>
+          s.id === session.id
+            ? {
+                ...s,
+                actualStart: serverStart,
+              }
+            : s
+        )
+      );
+    } catch (err) {
+      console.error("Error starting session:", err);
+      // Rollback optimistic update on failure
+      setTodaySessions((prev) =>
+        prev.map((s) =>
+          s.id === session.id
+            ? {
+                ...s,
+                sessionStatus: "UPCOMING",
+                actualStart: null,
+              }
+            : s
+        )
+      );
+      setActionError(err.message || "Failed to start session. Please try again.");
+    } finally {
+      setInternalStartingId(null);
+    }
+  }
+
+  // Instant Optimistic End Session (0 ms delay - Timer stops immediately)
+  async function handleConfirmEndSession(session) {
+    if (!session?.id || internalEndingId) return;
+
+    // 1. Close modal and stop the timer immediately in 0 ms
+    const optimisticEnd = new Date().toISOString();
+    setSessionToEnd(null);
+
+    setTodaySessions((prev) =>
+      prev.map((s) =>
+        s.id === session.id
+          ? {
+              ...s,
+              sessionStatus: "AWAITING_VERIFICATION",
+              actualEnd: optimisticEnd,
+            }
+          : s
+      )
+    );
+
+    try {
+      setInternalEndingId(session.id);
+      setActionError("");
+      const response = await endSessionAPI(session.id);
+      const text = await response.text();
+      let json = {};
+      if (text && text.trim()) {
+        try {
+          json = JSON.parse(text);
+        } catch {}
+      }
+
+      if (!response.ok) {
+        throw new Error(json.message || "Failed to end session on server");
+      }
+
+      // Invalidate cache so earnings & history reflect the newly ended session
+      invalidateCache(["/completed-tuitions", "/get-tutor-history", "/get-today-sessions"]);
+    } catch (err) {
+      console.error("Error ending session:", err);
+      // Revert optimistic update if API failed
       setTodaySessions((prev) =>
         prev.map((s) =>
           s.id === session.id
             ? {
                 ...s,
                 sessionStatus: "IN_PROGRESS",
-                actualStart: new Date().toISOString(),
+                actualEnd: null,
               }
             : s
         )
       );
-      await loadOverviewData(false);
-    } catch (err) {
-      console.error("Error starting session:", err);
-      setActionError(err.message || "Failed to start session");
+      setActionError(err.message || "Failed to end session. Please try again.");
     } finally {
-      setInternalStartingId(null);
+      setInternalEndingId(null);
     }
   }
 
@@ -677,7 +764,7 @@ export default function TutorOverview({
 
             <button
               type="button"
-              onClick={() => loadOverviewData(false)}
+              onClick={() => loadOverviewData(false, true)}
               disabled={loading || isRefreshing}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition active:scale-95 disabled:opacity-50"
               title="Refresh tutor data"
@@ -1028,6 +1115,21 @@ export default function TutorOverview({
                   const isApproved = session.sessionStatus === "APPROVED";
                   const isStarting = startingId === session.id;
 
+                  // Calculate live ticking duration
+                  let liveDurationText = "00:00:00";
+                  if (isLive) {
+                    const startMs = parseTimestamp(session.actualStart || session.startTime || session.scheduleStart);
+                    if (startMs && nowMs >= startMs) {
+                      const diffSec = Math.floor((nowMs - startMs) / 1000);
+                      const hrs = String(Math.floor(diffSec / 3600)).padStart(2, "0");
+                      const mins = String(Math.floor((diffSec % 3600) / 60)).padStart(2, "0");
+                      const secs = String(diffSec % 60).padStart(2, "0");
+                      liveDurationText = `${hrs}:${mins}:${secs}`;
+                    } else {
+                      liveDurationText = "00:00:01";
+                    }
+                  }
+
                   return (
                     <div
                       key={session.id}
@@ -1165,11 +1267,11 @@ export default function TutorOverview({
                         {isLive ? (
                           <button
                             type="button"
-                            disabled={parentEndingId === session.id}
-                            onClick={() => onEndSession && onEndSession(session)}
-                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition active:scale-95 disabled:opacity-60"
+                            disabled={endingId === session.id}
+                            onClick={() => setSessionToEnd(session)}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition active:scale-95 disabled:opacity-60 cursor-pointer"
                           >
-                            {parentEndingId === session.id ? (
+                            {endingId === session.id ? (
                               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                             ) : (
                               <Square size={13} className="fill-white" />
@@ -1298,6 +1400,71 @@ export default function TutorOverview({
             </span>
           </div>
         </>
+      )}
+
+      {/* End Session Confirmation Modal */}
+      {sessionToEnd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="relative my-auto w-full max-w-md overflow-hidden rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600 border border-rose-100/80 shadow-2xs">
+                  <AlertCircle size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    End Tuition Session?
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {sessionToEnd.student?.name ? `Student: ${sessionToEnd.student.name}` : "Confirm session completion"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={endingId === sessionToEnd.id}
+                onClick={() => setSessionToEnd(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition disabled:opacity-50 cursor-pointer"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-600 leading-relaxed mb-6">
+              Are you sure you want to end this tuition session? The timer will stop immediately, and the completed duration will be submitted as <span className="font-semibold text-slate-800">Awaiting Verification</span> for the parent to review.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                disabled={endingId === sessionToEnd.id}
+                onClick={() => setSessionToEnd(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={endingId === sessionToEnd.id}
+                onClick={() => handleConfirmEndSession(sessionToEnd)}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-rose-700 transition disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {endingId === sessionToEnd.id ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <span>Ending Session...</span>
+                  </>
+                ) : (
+                  <>
+                    <Square size={14} className="fill-white" />
+                    <span>Yes, End Session</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

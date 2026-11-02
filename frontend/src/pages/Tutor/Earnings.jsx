@@ -140,13 +140,13 @@ export default function Earnings() {
     }));
   };
 
-  const fetchEarnings = useCallback(async () => {
+  const fetchEarnings = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError("");
       setEndpointNotice("");
 
-      const response = await getCompletedTuitionsAPI();
+      const response = await getCompletedTuitionsAPI(forceRefresh);
       console.log("Hey response", response);
       const responseText = await response.text();
       let result = {};
@@ -376,7 +376,7 @@ export default function Earnings() {
 
         <button
           type="button"
-          onClick={fetchEarnings}
+          onClick={() => fetchEarnings(true)}
           disabled={loading}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition self-start sm:self-auto disabled:opacity-60"
         >

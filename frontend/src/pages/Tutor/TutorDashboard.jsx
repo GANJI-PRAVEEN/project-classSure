@@ -242,8 +242,9 @@ export default function TutorDashboard() {
     }
   }
 
+  // Initial sessions are loaded by TutorOverview itself; we don't duplicate on mount
   useEffect(() => {
-    fetchTodaySessions(true);
+    // No-op on mount to avoid double-fetching network requests
   }, []);
 
   async function startTimer(session) {
@@ -507,11 +508,7 @@ export default function TutorDashboard() {
           <div className="mx-auto max-w-6xl">
             {activeSection === "Overview" && (
               <TutorOverview
-                onStartTimer={startTimer}
-                onEndSession={(session) => setSessionToEnd(session)}
                 onReschedule={(session) => setSessionToReschedule(session)}
-                startingSessionId={startingSessionId}
-                endingSessionId={endingSessionId}
                 refreshTrigger={overviewRefreshKey}
               />
             )}
@@ -588,70 +585,6 @@ export default function TutorDashboard() {
         </div>
       </nav>
 
-      {/* End Session Confirmation Modal */}
-      {sessionToEnd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="relative my-auto w-full max-w-md overflow-hidden rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600 border border-rose-100/80 shadow-2xs">
-                  <AlertCircle size={22} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">
-                    End Tuition Session?
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    {sessionToEnd.student?.name ? `Student: ${sessionToEnd.student.name}` : "Confirm session completion"}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={endingSessionId === sessionToEnd.id}
-                onClick={() => setSessionToEnd(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition disabled:opacity-50"
-                aria-label="Close dialog"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p className="text-sm text-slate-600 leading-relaxed mb-6">
-              Are you sure you want to end this tuition session? The timer will stop, and the completed duration will be submitted as <span className="font-semibold text-slate-800">Awaiting Verification</span> for the parent to review.
-            </p>
-
-            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                disabled={endingSessionId === sessionToEnd.id}
-                onClick={() => setSessionToEnd(null)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={endingSessionId === sessionToEnd.id}
-                onClick={() => handleConfirmEndSession(sessionToEnd)}
-                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-rose-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {endingSessionId === sessionToEnd.id ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    <span>Ending Session...</span>
-                  </>
-                ) : (
-                  <>
-                    <Square size={14} className="fill-white" />
-                    <span>Yes, End Session</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Reschedule One-Day Session Modal */}
       {sessionToReschedule && (

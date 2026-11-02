@@ -39,17 +39,22 @@ public class TutorApisController {
 
         Map<String, Children> uniqueStudents = new LinkedHashMap<>();
 
-        // 1. Add students with confirmed schedules
-        if (acceptedSchedules != null) {
-            for (Schedule s : acceptedSchedules) {
-                if (s.getChildId() != null && !s.getChildId().trim().isEmpty()) {
-                    childrenRepo.findById(s.getChildId()).ifPresent(child -> {
-                        String key = (child.getParentId() != null ? child.getParentId() : "") + "_" + 
-                                     (child.getName() != null ? child.getName().trim().toLowerCase() : child.getId());
-                        if (key != null && !uniqueStudents.containsKey(key)) {
-                            uniqueStudents.put(key, child);
-                        }
-                    });
+        // 1. Add students with confirmed schedules (batch fetched to eliminate N+1 queries)
+        if (acceptedSchedules != null && !acceptedSchedules.isEmpty()) {
+            List<String> childIds = acceptedSchedules.stream()
+                    .map(Schedule::getChildId)
+                    .filter(id -> id != null && !id.trim().isEmpty())
+                    .distinct()
+                    .toList();
+
+            if (!childIds.isEmpty()) {
+                Iterable<Children> scheduleChildren = childrenRepo.findAllById(childIds);
+                for (Children child : scheduleChildren) {
+                    String key = (child.getParentId() != null ? child.getParentId() : "") + "_" + 
+                                 (child.getName() != null ? child.getName().trim().toLowerCase() : child.getId());
+                    if (key != null && !uniqueStudents.containsKey(key)) {
+                        uniqueStudents.put(key, child);
+                    }
                 }
             }
         }
@@ -469,11 +474,23 @@ public class TutorApisController {
 
         List<CompletedTuitions> completedTuitions =
                 completedTuitionsRepo.findAllByTutorId(tutor.getId());
+        if (completedTuitions == null) {
+            completedTuitions = new ArrayList<>();
+        } else {
+            completedTuitions = new ArrayList<>(completedTuitions);
+        }
+
+        Set<String> existingSessionIds = new HashSet<>();
+        for (CompletedTuitions ct : completedTuitions) {
+            if (ct.getSessionId() != null) {
+                existingSessionIds.add(ct.getSessionId());
+            }
+        }
 
         List<Session> tutorSessions = sessionRepo.findAllByTutorId(tutor.getId());
         if (tutorSessions != null) {
             for (Session s : tutorSessions) {
-                if (s.getSessionStatus() == SessionStatus.APPROVED && completedTuitionsRepo.findBySessionId(s.getId()).isEmpty()) {
+                if (s.getSessionStatus() == SessionStatus.APPROVED && !existingSessionIds.contains(s.getId())) {
                     double durationHours = (s.getCorrectedDurationMinutes() != null && s.getCorrectedDurationMinutes() > 0)
                             ? (s.getCorrectedDurationMinutes() / 60.0)
                             : ((s.getActualStart() != null && s.getActualEnd() != null)
@@ -496,6 +513,7 @@ public class TutorApisController {
                         ct.setApprovedAt(Instant.now());
                         completedTuitionsRepo.save(ct);
                         completedTuitions.add(ct);
+                        existingSessionIds.add(s.getId());
                     }
                 }
             }
