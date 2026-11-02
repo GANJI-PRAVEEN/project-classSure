@@ -82,12 +82,56 @@ function formatDays(days) {
   return days.map((d) => nameMap[String(d).toUpperCase()] || d).join(", ");
 }
 
+function extractTimeValue(val) {
+  if (!val) return "";
+  if (Array.isArray(val) && val.length >= 2) {
+    const h = String(val.length >= 5 ? val[3] : val[0]).padStart(2, "0");
+    const m = String(val.length >= 5 ? val[4] : val[1]).padStart(2, "0");
+    return `${h}:${m}`;
+  }
+  if (typeof val === "string") {
+    const clean = val.includes("T") ? val.split("T")[1] : val;
+    const parts = clean.split(":");
+    if (parts.length >= 2) {
+      const h = String(parseInt(parts[0], 10)).padStart(2, "0");
+      const m = String(parseInt(parts[1], 10)).padStart(2, "0");
+      return `${h}:${m}`;
+    }
+  }
+  return "";
+}
+
+function extractDateValue(val) {
+  if (!val) return "";
+  if (Array.isArray(val) && val.length >= 3) {
+    const y = String(val[0]);
+    const m = String(val[1]).padStart(2, "0");
+    const d = String(val[2]).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof val === "string") {
+    const clean = val.split("T")[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+      return clean;
+    }
+  }
+  return "";
+}
+
 function formatTime(timeStr) {
   if (!timeStr) return "";
-  const parts = String(timeStr).split(":");
-  let hours = parseInt(parts[0], 10);
-  const minutes = parts[1] ? parts[1].slice(0, 2) : "00";
-  if (isNaN(hours)) return timeStr;
+  let hours = null;
+  let minutes = "00";
+  if (Array.isArray(timeStr) && timeStr.length >= 2) {
+    hours = timeStr.length >= 5 ? timeStr[3] : timeStr[0];
+    minutes = String(timeStr.length >= 5 ? timeStr[4] : timeStr[1]).padStart(2, "0");
+  } else if (typeof timeStr === "string") {
+    const clean = timeStr.includes("T") ? timeStr.split("T")[1] : timeStr;
+    const parts = clean.split(":");
+    hours = parseInt(parts[0], 10);
+    minutes = parts[1] ? parts[1].slice(0, 2) : "00";
+  }
+  if (hours == null || isNaN(hours)) return String(timeStr);
   const ampm = hours >= 12 ? "PM" : "AM";
   hours = hours % 12;
   hours = hours ? hours : 12;
@@ -96,9 +140,13 @@ function formatTime(timeStr) {
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
+  let cleanDateStr = dateStr;
+  if (Array.isArray(dateStr) && dateStr.length >= 3) {
+    cleanDateStr = `${dateStr[0]}-${String(dateStr[1]).padStart(2, "0")}-${String(dateStr[2]).padStart(2, "0")}`;
+  }
   try {
-    const [year, month, day] = String(dateStr).split("-");
-    if (!year || !month || !day) return dateStr;
+    const [year, month, day] = String(cleanDateStr).split("-");
+    if (!year || !month || !day) return String(dateStr);
     const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
     return date.toLocaleDateString("en-US", {
       month: "short",
@@ -106,7 +154,7 @@ function formatDate(dateStr) {
       year: "numeric",
     });
   } catch {
-    return dateStr;
+    return String(dateStr);
   }
 }
 
@@ -206,8 +254,8 @@ export default function MyChildren() {
       const res = await validateTutorAPI(targetEmail);
       if (res.ok) {
         const data = await res.json();
-        let tName = "";
-        if (data.tutor_id) {
+        let tName = data.name || "";
+        if (!tName && data.tutor_id) {
           try {
             const tRes = await getTutorByIdAPI(data.tutor_id);
             if (tRes.ok) {
@@ -266,10 +314,10 @@ export default function MyChildren() {
 
     if (child.schedule) {
       setDaysOfWeek(Array.isArray(child.schedule.daysOfWeek) ? child.schedule.daysOfWeek : []);
-      setStartTime(child.schedule.startTime || "");
-      setEndTime(child.schedule.endTime || "");
-      setEffectiveFrom(child.schedule.effectiveFrom || "");
-      setEffectiveTo(child.schedule.effectiveTo || "");
+      setStartTime(extractTimeValue(child.schedule.startTime));
+      setEndTime(extractTimeValue(child.schedule.endTime));
+      setEffectiveFrom(extractDateValue(child.schedule.effectiveFrom));
+      setEffectiveTo(extractDateValue(child.schedule.effectiveTo));
       setHourlyRate(
         child.schedule.hourlyRate != null ? String(child.schedule.hourlyRate) : ""
       );
@@ -312,12 +360,12 @@ export default function MyChildren() {
   }
 
   // Load children with their enriched static names and schedules
-  async function loadChildrensData() {
+  async function loadChildrensData(forceRefresh = false) {
     setLoadingChildren(true);
     try {
       const [res, schedRes] = await Promise.all([
-        getAllChildrensAPI(),
-        getSchedulesAPI().catch(() => null),
+        getAllChildrensAPI(forceRefresh),
+        getSchedulesAPI(forceRefresh).catch(() => null),
       ]);
 
       const scheduleMap = new Map();
@@ -368,8 +416,9 @@ export default function MyChildren() {
             }
 
             try {
-              if (child.tutorId) {
-                const tutorRes = await getTutorByIdAPI(child.tutorId);
+              const effectiveTutorId = child.tutorId || matchedSchedule?.tutorId;
+              if (effectiveTutorId) {
+                const tutorRes = await getTutorByIdAPI(effectiveTutorId, forceRefresh);
                 if (tutorRes.ok) {
                   const tutorData = await tutorRes.json();
                   tutorName = tutorData.fullName ?? tutorData.name ?? tutorName;
@@ -644,74 +693,73 @@ export default function MyChildren() {
     setMessage("");
 
     const newErrors = {};
-    const tutorEmail = formData.tutorEmail.trim().toLowerCase();
+    const tutorEmail = (formData.tutorEmail || "").trim().toLowerCase();
 
-    // 1. Validate student name
-    if (!formData.studentName.trim()) {
-      newErrors.studentName = "Enter the student's name.";
-    }
+    const isEditingTutorOnly = editingChild && editSection === "tutor";
+    const isEditingChildOnly = editingChild && editSection === "child";
+    const isEditingScheduleOnly = editingChild && editSection === "schedule";
 
-    // 2. Validate tutor email format
-    if (!tutorEmail) {
-      newErrors.tutorEmail = "Tutor email is required.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(tutorEmail)) {
-      newErrors.tutorEmail = "Enter a valid tutor email address.";
-    }
-
-    // 3. Validate education category
-    if (!formData.educationCategory) {
-      newErrors.educationCategory = "Select an education category.";
-    }
-
-    // 4. Validate board
-    if (boards.length > 0 && !isCompetitiveExam && !formData.board) {
-      newErrors.board = "Select a board.";
-    }
-
-    // 5. Validate grade
-    if (!formData.grade) {
-      newErrors.grade = "Select a grade or year.";
+    // 1. Student Info Validations
+    if (!isEditingTutorOnly && !isEditingScheduleOnly) {
+      if (!formData.studentName.trim()) {
+        newErrors.studentName = "Enter the student's name.";
+      }
+      if (!formData.educationCategory) {
+        newErrors.educationCategory = "Select an education category.";
+      }
+      if (boards.length > 0 && !isCompetitiveExam && !formData.board) {
+        newErrors.board = "Select a board.";
+      }
+      if (!formData.grade) {
+        newErrors.grade = "Select a grade or year.";
+      }
+      if (!formData.subjects || formData.subjects.length === 0) {
+        newErrors.subjects = "Select at least one subject.";
+      }
     }
 
-    // 6. Validate subjects
-    if (!formData.subjects || formData.subjects.length === 0) {
-      newErrors.subjects = "Select at least one subject.";
+    // 2. Tutor Email Validations
+    if (!isEditingChildOnly && !isEditingScheduleOnly) {
+      if (!tutorEmail) {
+        newErrors.tutorEmail = "Tutor email is required.";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(tutorEmail)) {
+        newErrors.tutorEmail = "Enter a valid tutor email address.";
+      }
     }
 
-    // 7. Validate recurring class days
-    if (!daysOfWeek || daysOfWeek.length === 0) {
-      newErrors.daysOfWeek = "Select at least one recurring class day.";
-    }
+    // 3. Schedule Validations
+    const requiresScheduleValidation = !editingChild || isEditingScheduleOnly || (
+      editSection === "all" && (editingChild?.schedule || daysOfWeek.length > 0 || startTime || endTime || effectiveFrom || hourlyRate)
+    );
 
-    // 8. Validate schedule timings
-    if (!startTime) {
-      newErrors.startTime = "Select a start time.";
-    }
-    if (!endTime) {
-      newErrors.endTime = "Select an end time.";
-    } else if (startTime && endTime <= startTime) {
-      newErrors.endTime = "End time must be later than start time.";
-    }
-
-    // 9. Validate effective dates
-    if (!effectiveFrom) {
-      newErrors.effectiveFrom = "Select the schedule start date.";
-    }
-    if (effectiveTo && effectiveFrom && effectiveTo < effectiveFrom) {
-      newErrors.effectiveTo = "End date must be on or after the effective-from date.";
-    }
-
-    // 10. Validate hourly tuition fee
-    if (!hourlyRate || String(hourlyRate).trim() === "") {
-      newErrors.hourlyRate = "Hourly tuition fee is required.";
-    } else if (isNaN(Number(hourlyRate)) || Number(hourlyRate) <= 0) {
-      newErrors.hourlyRate = "Hourly fee must be greater than zero.";
+    if (requiresScheduleValidation && !isEditingTutorOnly && !isEditingChildOnly) {
+      if (!daysOfWeek || daysOfWeek.length === 0) {
+        newErrors.daysOfWeek = "Select at least one recurring class day.";
+      }
+      if (!startTime) {
+        newErrors.startTime = "Select a start time.";
+      }
+      if (!endTime) {
+        newErrors.endTime = "Select an end time.";
+      } else if (startTime && endTime <= startTime) {
+        newErrors.endTime = "End time must be later than start time.";
+      }
+      if (!effectiveFrom) {
+        newErrors.effectiveFrom = "Select the schedule start date.";
+      }
+      if (effectiveTo && effectiveFrom && effectiveTo < effectiveFrom) {
+        newErrors.effectiveTo = "End date must be on or after the effective-from date.";
+      }
+      if (!hourlyRate || String(hourlyRate).trim() === "") {
+        newErrors.hourlyRate = "Hourly tuition fee is required.";
+      } else if (isNaN(Number(hourlyRate)) || Number(hourlyRate) <= 0) {
+        newErrors.hourlyRate = "Hourly fee must be greater than zero.";
+      }
     }
 
     // Stop and do not make any save requests if validation fails
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      setEditSection("all");
       return;
     }
 
@@ -725,32 +773,36 @@ export default function MyChildren() {
         let parentId = editingChild.parentId;
 
         const originalTutorEmail = (editingChild.tutorEmail || "").trim().toLowerCase();
-        if (tutorEmail !== originalTutorEmail || !tutorId) {
-          try {
-            const tutorRes = await validateTutorAPI(tutorEmail);
-            if (tutorRes.ok) {
-              const data = await tutorRes.json();
-              tutorId = data.tutor_id || tutorId;
-              parentId = data.parent_id || parentId;
-            } else {
-              const err = await tutorRes.json().catch(() => ({}));
+        const tutorEmailChanged = tutorEmail !== originalTutorEmail;
+
+        if (tutorEmailChanged || !tutorId) {
+          if (verifiedTutorInfo && verifiedTutorInfo.email?.toLowerCase() === tutorEmail && verifiedTutorInfo.tutorId) {
+            tutorId = verifiedTutorInfo.tutorId;
+          } else {
+            try {
+              const tutorRes = await validateTutorAPI(tutorEmail);
+              if (tutorRes.ok) {
+                const data = await tutorRes.json();
+                tutorId = data.tutor_id || tutorId;
+                parentId = data.parent_id || parentId;
+              } else {
+                const err = await tutorRes.json().catch(() => ({}));
+                setErrors({
+                  tutorEmail:
+                    err.error ||
+                    err.message ||
+                    "No registered tutor found with this email. Please check that this email belongs to a ClassSure tutor.",
+                });
+                setSubmitting(false);
+                return;
+              }
+            } catch {
               setErrors({
-                tutorEmail:
-                  err.error ||
-                  err.message ||
-                  "No tutor found with this email. Please check that this email belongs to a registered tutor.",
+                tutorEmail: "Failed to verify tutor email. Please check your connection.",
               });
-              setEditSection("tutor");
               setSubmitting(false);
               return;
             }
-          } catch {
-            setErrors({
-              tutorEmail: "Failed to verify tutor email. Please check your connection.",
-            });
-            setEditSection("tutor");
-            setSubmitting(false);
-            return;
           }
         }
 
@@ -760,6 +812,7 @@ export default function MyChildren() {
           name: formData.studentName.trim(),
           parentId: parentId,
           tutorId: tutorId,
+          tutorEmail: tutorEmail,
           grade: formData.grade,
           subjectIds: formData.subjects,
           board: formData.board || null,
@@ -771,9 +824,13 @@ export default function MyChildren() {
           await saveChildAPI(childrenPayload).catch(() => null);
         }
 
-        if (daysOfWeek.length > 0 && startTime && endTime && effectiveFrom && hourlyRate) {
+        // Save schedule changes or reassign existing schedule to new tutor
+        const hasScheduleInfo = daysOfWeek.length > 0 && startTime && endTime && effectiveFrom && hourlyRate;
+        const existingSchedule = editingChild.schedule;
+
+        if (hasScheduleInfo) {
           const schedulePayload = {
-            id: editingChild.schedule?.id ?? editingChild.schedule?._id,
+            id: existingSchedule?.id ?? existingSchedule?._id,
             childId: childId,
             parentId: parentId,
             tutorId: tutorId,
@@ -783,7 +840,7 @@ export default function MyChildren() {
             effectiveFrom: effectiveFrom,
             effectiveTo: effectiveTo || null,
             hourlyRate: Number(hourlyRate),
-            status: editingChild.schedule?.status || "PENDING",
+            status: tutorEmailChanged ? "PENDING" : (existingSchedule?.status || "PENDING"),
           };
 
           try {
@@ -794,10 +851,30 @@ export default function MyChildren() {
           } catch (schedErr) {
             console.warn("Schedule save error:", schedErr);
           }
+        } else if (tutorEmailChanged && existingSchedule?.id) {
+          try {
+            await updateScheduleAPI(existingSchedule.id, {
+              ...existingSchedule,
+              tutorId: tutorId,
+              status: "PENDING",
+            });
+          } catch (schedErr) {
+            console.warn("Schedule tutor update error:", schedErr);
+          }
         }
 
+        invalidateCache([
+          "/api/parent/get-childrens",
+          "/api/parent/get-schedules",
+          "/api/tutor/get-students",
+          "get-student-details",
+          "get-tutor-id",
+          "/get-today-sessions",
+          "/get-pending-requests",
+        ]);
+
         handleClose();
-        await loadChildrensData();
+        await loadChildrensData(true);
         return;
       }
       // Step 1: Verify tutor using existing API

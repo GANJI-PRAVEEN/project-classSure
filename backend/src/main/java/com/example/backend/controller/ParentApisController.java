@@ -3,12 +3,10 @@ package com.example.backend.controller;
 import com.example.backend.enums.SessionStatus;
 import com.example.backend.model.*;
 import com.example.backend.repo.*;
-import org.apache.coyote.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -111,40 +109,53 @@ public class ParentApisController {
             @RequestBody Users request,
             Authentication authentication) {
         System.out.println("email received " + request.getEmail());
-        Optional<Users> tutorOptional = userrepo.findByEmail(request.getEmail().trim().toLowerCase());
+        String reqEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+        Optional<Users> tutorOptional = userrepo.findByEmail(reqEmail);
+        if (tutorOptional.isEmpty()) {
+            tutorOptional = userrepo.findByEmailIgnoreCase(reqEmail);
+        }
         Users tutor = tutorOptional.orElseThrow(() ->
                 new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "No user found with this email"
+                        "No registered tutor found with this email"
                 )
         );
 
         if (!"TUTOR".equalsIgnoreCase(tutor.getRole())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "This email does not belong to a tutor"
+                    "This email does not belong to a registered tutor"
             );
         }
 
         String parentEmail = authentication.getName();
         Optional<Users> parentOptional = userrepo.findByEmail(parentEmail);
+        if (parentOptional.isEmpty()) {
+            parentOptional = userrepo.findByEmailIgnoreCase(parentEmail);
+        }
         Users parent = parentOptional.orElseThrow(() ->
                 new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "parent email not found in db"
+                        "Parent email not found in database"
                 )
         );
         if (!"PARENT".equalsIgnoreCase(parent.getRole())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Email does not belong to the parent"
+                    "Email does not belong to a parent"
             );
         }
+
+        String tutorName = tutor.getFullName() != null && !tutor.getFullName().trim().isEmpty()
+                ? tutor.getFullName().trim()
+                : (tutor.getEmail() != null ? tutor.getEmail() : "Registered Tutor");
 
         return ResponseEntity.ok(
                 Map.of(
                         "tutor_id", tutor.getId(),
                         "parent_id", parent.getId(),
+                        "name", tutorName,
+                        "email", tutor.getEmail() != null ? tutor.getEmail() : reqEmail,
                         "message", "Verified Successfully"
                 )
         );
@@ -157,8 +168,11 @@ public class ParentApisController {
         }
 
         String parentEmail = authentication.getName();
-        Users parent = userrepo.findByEmail(parentEmail)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent not found"));
+        Optional<Users> parentOpt = userrepo.findByEmail(parentEmail);
+        if (parentOpt.isEmpty()) {
+            parentOpt = userrepo.findByEmailIgnoreCase(parentEmail);
+        }
+        Users parent = parentOpt.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent not found"));
 
         if (!"PARENT".equalsIgnoreCase(parent.getRole())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Only parents can create schedules"));
@@ -215,9 +229,104 @@ public class ParentApisController {
             return ResponseEntity.badRequest().body(Map.of("error", "Hourly tuition fee must be greater than zero"));
         }
 
+        // If no schedule id passed, check if a schedule already exists for this child to avoid duplicates
+        if (schedule.getId() == null || schedule.getId().trim().isEmpty()) {
+            List<Schedule> existingSchedules = schedulesRepo.findAllByChildId(schedule.getChildId());
+            if (existingSchedules != null && !existingSchedules.isEmpty()) {
+                schedule.setId(existingSchedules.get(0).getId());
+            }
+        }
+
         // 7. Enforce ownership and pending status
         schedule.setParentId(parent.getId());
         schedule.setStatus("PENDING");
+
+        Schedule saved = schedulesRepo.save(schedule);
+        return ResponseEntity.ok(saved);
+    }
+
+    @PutMapping({"/update-schedule/{scheduleId}", "/api/parent/update-schedule/{scheduleId}"})
+    public ResponseEntity<?> updateSchedule(
+            @PathVariable String scheduleId,
+            @RequestBody Schedule schedulePayload,
+            Authentication authentication) {
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Authentication required"));
+        }
+
+        String parentEmail = authentication.getName();
+        Optional<Users> parentOpt = userrepo.findByEmail(parentEmail);
+        if (parentOpt.isEmpty()) {
+            parentOpt = userrepo.findByEmailIgnoreCase(parentEmail);
+        }
+        if (parentOpt.isEmpty() || !"PARENT".equalsIgnoreCase(parentOpt.get().getRole())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Only parents can update schedules"));
+        }
+        Users parent = parentOpt.get();
+
+        Optional<Schedule> existingOpt = schedulesRepo.findById(scheduleId);
+        Schedule schedule;
+        if (existingOpt.isPresent()) {
+            schedule = existingOpt.get();
+            if (schedule.getParentId() != null && !schedule.getParentId().equals(parent.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Not authorized to update this schedule"));
+            }
+        } else if (schedulePayload.getChildId() != null) {
+            List<Schedule> childScheds = schedulesRepo.findAllByChildId(schedulePayload.getChildId());
+            if (childScheds != null && !childScheds.isEmpty()) {
+                schedule = childScheds.get(0);
+            } else {
+                schedule = new Schedule();
+                schedule.setId(scheduleId);
+                schedule.setChildId(schedulePayload.getChildId());
+            }
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Schedule not found"));
+        }
+
+        if (schedulePayload.getDaysOfWeek() != null && !schedulePayload.getDaysOfWeek().isEmpty()) {
+            schedule.setDaysOfWeek(schedulePayload.getDaysOfWeek());
+        }
+        if (schedulePayload.getStartTime() != null) {
+            schedule.setStartTime(schedulePayload.getStartTime());
+        }
+        if (schedulePayload.getEndTime() != null) {
+            schedule.setEndTime(schedulePayload.getEndTime());
+        }
+        if (schedule.getStartTime() != null && schedule.getEndTime() != null && !schedule.getEndTime().isAfter(schedule.getStartTime())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "End time must be later than start time"));
+        }
+        if (schedulePayload.getEffectiveFrom() != null) {
+            schedule.setEffectiveFrom(schedulePayload.getEffectiveFrom());
+        }
+        if (schedulePayload.getEffectiveTo() != null) {
+            schedule.setEffectiveTo(schedulePayload.getEffectiveTo());
+        }
+        if (schedule.getEffectiveFrom() != null && schedule.getEffectiveTo() != null && schedule.getEffectiveTo().isBefore(schedule.getEffectiveFrom())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Effective to date must be on or after effective from date"));
+        }
+
+        boolean tutorChanged = false;
+        if (schedulePayload.getTutorId() != null && !schedulePayload.getTutorId().trim().isEmpty()) {
+            Optional<Users> tutorOpt = userrepo.findById(schedulePayload.getTutorId());
+            if (tutorOpt.isEmpty() || !"TUTOR".equalsIgnoreCase(tutorOpt.get().getRole())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Specified tutor is invalid"));
+            }
+            if (!schedulePayload.getTutorId().equals(schedule.getTutorId())) {
+                tutorChanged = true;
+                schedule.setTutorId(schedulePayload.getTutorId());
+            }
+        }
+
+        if (schedulePayload.getHourlyRate() != null && schedulePayload.getHourlyRate() > 0) {
+            schedule.setHourlyRate(schedulePayload.getHourlyRate());
+        }
+
+        schedule.setParentId(parent.getId());
+        if (tutorChanged || schedulePayload.getStatus() != null) {
+            schedule.setStatus(tutorChanged ? "PENDING" : schedulePayload.getStatus());
+        }
 
         Schedule saved = schedulesRepo.save(schedule);
         return ResponseEntity.ok(saved);
@@ -227,6 +336,9 @@ public class ParentApisController {
     public ResponseEntity<List<Schedule>> getSchedules(Authentication authentication) {
         if (authentication != null && authentication.isAuthenticated()) {
             Optional<Users> parent = userrepo.findByEmail(authentication.getName());
+            if (parent.isEmpty()) {
+                parent = userrepo.findByEmailIgnoreCase(authentication.getName());
+            }
             if (parent.isPresent()) {
                 List<Schedule> list = schedulesRepo.findAllByParentId(parent.get().getId());
                 if (!list.isEmpty()) {
@@ -237,8 +349,6 @@ public class ParentApisController {
         return ResponseEntity.ok(schedulesRepo.findAll());
     }
 
-
-
     @DeleteMapping("/delete-child/{childId}")
     public ResponseEntity<?> deleteChild(@PathVariable String childId, Authentication authentication) {
         Optional<Children> childOpt = childrenRepo.findById(childId);
@@ -248,6 +358,9 @@ public class ParentApisController {
         Children child = childOpt.get();
         if (authentication != null && authentication.isAuthenticated()) {
             Optional<Users> parent = userrepo.findByEmail(authentication.getName());
+            if (parent.isEmpty()) {
+                parent = userrepo.findByEmailIgnoreCase(authentication.getName());
+            }
             if (parent.isPresent() && child.getParentId() != null && !parent.get().getId().equals(child.getParentId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Not authorized to delete this child"));
             }
@@ -421,7 +534,6 @@ public class ParentApisController {
         ));
     }
 
-
     @PutMapping({"/update-child/{childId}", "/api/parent/update-child/{childId}"})
     public ResponseEntity<?> updateChild(
             @PathVariable String childId,
@@ -458,12 +570,12 @@ public class ParentApisController {
         Users parent = optionalParent.get();
 
         // Verify child belongs to this parent
-        if (!children.getParentId().equals(parent.getId())) {
+        if (children.getParentId() != null && !children.getParentId().equals(parent.getId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("message", "You are not authorized to update this child"));
         }
 
-        // Update allowed fields
+        // Update student fields
         if (childPayload.containsKey("name")) {
             children.setName((String) childPayload.get("name"));
         }
@@ -483,8 +595,58 @@ public class ParentApisController {
         }
         if (childPayload.containsKey("educationCategory")) {
             children.setEducationCategory(
-                    (String)childPayload.get("educationCategory")
+                    (String) childPayload.get("educationCategory")
             );
+        }
+
+        // Update tutor if passed by tutorId or tutorEmail
+        String oldTutorId = children.getTutorId();
+        String newTutorId = null;
+        if (childPayload.containsKey("tutorId") && childPayload.get("tutorId") != null) {
+            String candidateId = ((String) childPayload.get("tutorId")).trim();
+            if (!candidateId.isEmpty()) {
+                Optional<Users> tutorOpt = userrepo.findById(candidateId);
+                if (tutorOpt.isPresent() && "TUTOR".equalsIgnoreCase(tutorOpt.get().getRole())) {
+                    newTutorId = candidateId;
+                }
+            }
+        }
+        if (newTutorId == null && childPayload.containsKey("tutorEmail") && childPayload.get("tutorEmail") != null) {
+            String candidateEmail = ((String) childPayload.get("tutorEmail")).trim().toLowerCase();
+            if (!candidateEmail.isEmpty()) {
+                Optional<Users> tutorOpt = userrepo.findByEmail(candidateEmail);
+                if (tutorOpt.isEmpty()) {
+                    tutorOpt = userrepo.findByEmailIgnoreCase(candidateEmail);
+                }
+                if (tutorOpt.isPresent() && "TUTOR".equalsIgnoreCase(tutorOpt.get().getRole())) {
+                    newTutorId = tutorOpt.get().getId();
+                }
+            }
+        }
+
+        if (newTutorId != null) {
+            children.setTutorId(newTutorId);
+            // If tutor changed, also reassign all schedules for this child to the new tutor in PENDING status
+            if (!newTutorId.equals(oldTutorId)) {
+                List<Schedule> childSchedules = schedulesRepo.findAllByChildId(childId);
+                if (childSchedules != null) {
+                    for (Schedule s : childSchedules) {
+                        s.setTutorId(newTutorId);
+                        s.setStatus("PENDING");
+                        schedulesRepo.save(s);
+
+                        // Clear any upcoming sessions under the old tutor
+                        List<Session> upSessions = sessionRepo.findAllByScheduleId(s.getId());
+                        if (upSessions != null) {
+                            for (Session sess : upSessions) {
+                                if (sess.getSessionStatus() == SessionStatus.UPCOMING) {
+                                    sessionRepo.delete(sess);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         childrenRepo.save(children);
@@ -494,7 +656,4 @@ public class ParentApisController {
                 "child", children
         ));
     }
-
-
-
 }

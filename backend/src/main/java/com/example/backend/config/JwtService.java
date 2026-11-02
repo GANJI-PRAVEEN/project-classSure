@@ -1,7 +1,5 @@
 package com.example.backend.config;
 
-
-import io.jsonwebtoken.Jwt;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,15 +31,19 @@ public class JwtService {
         }
         return Keys.hmacShaKeyFor(keyBytes);
     }
+
     public String generateToken(String email){
         long now = System.currentTimeMillis();
+        // Effectively non-expiring token (valid for 50 years)
+        long farFuture = now + 1000L * 60 * 60 * 24 * 365 * 50;
         return Jwts.builder()
                 .subject(email)
                 .issuedAt(new Date(now))
-                .expiration(new Date(now+1000 * 60 * 60))
+                .expiration(new Date(farFuture))
                 .signWith(getKey())
                 .compact();
     }
+
     public String extractEmail(String token) {
         return Jwts.parser()
                 .verifyWith(getKey())
@@ -50,8 +52,9 @@ public class JwtService {
                 .getPayload()
                 .getSubject();
     }
-    public boolean isTokenValid(String token,String email){
-        String tokenemail = extractEmail(token);
-        return tokenemail.equals(email);
+
+    public boolean isTokenValid(String token, String email){
+        String tokenEmail = extractEmail(token);
+        return tokenEmail != null && tokenEmail.equalsIgnoreCase(email);
     }
 }

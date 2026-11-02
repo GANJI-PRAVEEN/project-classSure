@@ -1,16 +1,11 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jwtDecode } from "jwt-decode";
-
 
 const AuthContext = createContext();
-
-
 
 export function AuthProvider({ children }) {
     const navigate = useNavigate();
     const [token, setToken] = useState(() => localStorage.getItem("token"));
-
 
     function logout() {
         localStorage.removeItem("token");
@@ -19,49 +14,17 @@ export function AuthProvider({ children }) {
         setToken(null);
         navigate("/login", { replace: true });
     }
+
     function login(newToken, user, role) {
         console.log("called login in authcontext");
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(user));
-        localStorage.setItem("role", role);
+        const cleanRole = String(role || "").toUpperCase().replace("ROLE_", "").trim();
+        localStorage.setItem("role", cleanRole);
         setToken(newToken);
     }
 
-
-    useEffect(() => {
-        if (!token) return;
-
-        let timeoutId;
-        try {
-            // 1. Read the expiration from the JWT
-            const decodedToken = jwtDecode(token);
-
-            // 2. Convert exp from seconds to milliseconds
-            const expirationTime = decodedToken.exp * 1000;
-
-            // 3. Calculate remaining time
-            const remainingTime = expirationTime - Date.now();
-            // 4. If expired, log out immediately
-            if (
-                !decodedToken.exp ||
-                !Number.isFinite(expirationTime) ||
-                remainingTime <= 0
-            ) {
-                logout();
-                return;
-            }
-            // 5. Automatically log out when it expires
-            timeoutId = setTimeout(() => {
-                logout();
-            }, remainingTime);
-
-
-        } catch (error) {
-            console.error("JWT decode error", error)
-            logout()
-        }
-        return () => clearTimeout(timeoutId);
-    }, [token]);
+    // Expiration auto-logout removed: users remain logged in until explicit logout
     return (
         <AuthContext.Provider value={{ token, login, logout }}>
             {children}
@@ -72,6 +35,5 @@ export function AuthProvider({ children }) {
 export function useAuth() {
     return useContext(AuthContext);
 }
-
 
 export default AuthContext;

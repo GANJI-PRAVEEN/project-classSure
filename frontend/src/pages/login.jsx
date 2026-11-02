@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "") || "http://localhost:8080";
 
 export default function Login() {
   const { login } = useAuth();
@@ -57,10 +57,7 @@ export default function Login() {
         throw new Error(errorMsg);
       }
 
-      // Assuming your backend returns the JWT as a JSON string.
-      // If it returns an object, adjust this part to match it.
       let result;
-
       try {
         result = JSON.parse(responseText);
       } catch {
@@ -68,9 +65,9 @@ export default function Login() {
       }
 
       const token =
-        typeof result === "string" ? result : result.token;
+        typeof result === "string" ? result : result?.token;
 
-      const role =
+      const rawRole =
         typeof result === "object" && result !== null
           ? result.role
           : null;
@@ -79,18 +76,16 @@ export default function Login() {
           ? result.user
           : null;
 
-      if (!token || !role || !user) {
+      if (!token || !rawRole || !user) {
         throw new Error(
-          "Login response must contain both a token,a role and a user"
+          "Login response must contain a token, role, and user details."
         );
       }
 
-      // Store the token for authenticated API requests.
-      // localStorage.setItem("token", token);
-      // localStorage.setItem("role", role);
-      // localStorage.setItem("user", JSON.stringify(user));
+      const role = String(rawRole).toUpperCase().replace("ROLE_", "").trim();
+
       login(token, user, role);
-      console.log("set user ", localStorage.getItem("user"));
+      console.log("Logged in user:", user);
 
       // Redirect according to the user's actual role.
       if (role === "TUTOR") {
@@ -98,7 +93,7 @@ export default function Login() {
       } else if (role === "PARENT") {
         navigate("/parent/dashboard");
       } else {
-        throw new Error("Unrecognized user role.");
+        throw new Error("Unrecognized user role: " + role);
       }
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");

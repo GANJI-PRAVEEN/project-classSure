@@ -1,6 +1,6 @@
 import { cachedFetch, CACHE_TTL, invalidateCache, clearAllApiCache } from "./apiCache.js";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "") || "http://localhost:8080";
 console.log("API Base URL:", BASE_URL);
 
 function getAuthHeader() {
@@ -114,7 +114,7 @@ export async function updateChildAPI(childId, childrenPayload) {
         });
     }
     if (res && res.ok) {
-        invalidateCache(["/api/parent/get-childrens", "/api/tutor/get-students", "get-student-details"]);
+        invalidateCache(["/api/parent/get-childrens", "/api/parent/get-schedules", "/api/tutor/get-students", "get-student-details", "get-tutor-id", "/get-today-sessions", "/get-pending-requests"]);
     }
     return res;
 }

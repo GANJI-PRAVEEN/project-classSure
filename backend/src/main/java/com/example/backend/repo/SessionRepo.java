@@ -15,6 +15,10 @@ public interface SessionRepo extends MongoRepository<Session,String> {
 
     Boolean existsByScheduleIdAndSessionDate(String scheduleId, LocalDate sessionDate);
 
+    List<Session> findAllByScheduleId(String scheduleId);
+
+    List<Session> findAllByChildId(String childId);
+
     List<Session> findAllByTutorId(String tutorId);
 
     List<Session> findAllByParentIdAndSessionStatus(String parentId, SessionStatus sessionStatus);
