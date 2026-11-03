@@ -367,6 +367,10 @@ public class ParentApisController {
         }
         childrenRepo.deleteById(childId);
         List<Schedule> schedules = schedulesRepo.findAllByChildId(childId);
+        List<Session> sessions = sessionRepo.findAllByChildId(childId);
+        if (!sessions.isEmpty()) {
+            sessionRepo.deleteAll(sessions);
+        }
         if (!schedules.isEmpty()) {
             schedulesRepo.deleteAll(schedules);
         }

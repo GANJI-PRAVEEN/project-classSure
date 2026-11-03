@@ -473,8 +473,17 @@ export default function MyChildren() {
               tutorEmail = matchedSchedule.tutorEmail;
             }
 
+            const resolvedName =
+              (child.name && String(child.name).trim()) ||
+              (child.studentName && String(child.studentName).trim()) ||
+              (child.childName && String(child.childName).trim()) ||
+              (child.fullName && String(child.fullName).trim()) ||
+              (matchedSchedule?.studentName && String(matchedSchedule.studentName).trim()) ||
+              "Student";
+
             return {
               ...child,
+              name: resolvedName,
               rawEducationCategoryId: child.educationCategory,
               rawBoardId: child.board,
               rawSubjectIds: Array.isArray(child.subjectIds) ? child.subjectIds : [],
@@ -1052,52 +1061,70 @@ export default function MyChildren() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
           {children.map((child) => {
             const schedule = child.schedule;
-            const isPending = schedule?.status === "PENDING";
-            const isActive = schedule?.status === "ACTIVE" || schedule?.status === "APPROVED";
+            const rawStatus = schedule?.status || child?.status;
+            const normalizedStatus = rawStatus?.toUpperCase();
+            const isPending = normalizedStatus === "PENDING";
+            const isActive =
+              normalizedStatus === "ACTIVE" ||
+              normalizedStatus === "ACCEPTED" ||
+              normalizedStatus === "APPROVED";
+
+            const displayName =
+              (child.name && String(child.name).trim()) ||
+              (child.studentName && String(child.studentName).trim()) ||
+              (child.childName && String(child.childName).trim()) ||
+              (child.fullName && String(child.fullName).trim()) ||
+              (schedule?.studentName && String(schedule.studentName).trim()) ||
+              "Student";
+
+            const initialLetter = displayName.charAt(0).toUpperCase() || "S";
 
             return (
               <div
                 key={child.id ?? child._id}
-                className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 lg:p-6 shadow-xs hover:shadow-md transition-all duration-200"
+                className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-200"
               >
                 <div>
-                  {/* Card Header */}
+                  {/* Card Header: Avatar, Name, Grade/Board, and Status Badge */}
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 font-bold text-base shadow-xs mt-0.5">
-                        {child.name?.charAt(0)?.toUpperCase() ?? "S"}
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-lg shadow-xs mt-0.5">
+                        {initialLetter}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h2
-                          className="font-bold text-slate-900 text-base leading-snug truncate"
-                          title={child.name || "Unnamed Child"}
+                        <h3
+                          className="font-bold text-slate-900 text-base sm:text-lg leading-snug break-words"
+                          title={displayName}
                         >
-                          {child.name || "Unnamed Child"}
-                        </h2>
-                        <div className="flex items-center gap-1.5 mt-0.5 text-xs font-medium text-slate-500 truncate">
-                          {child.grade ? (
-                            <span className="inline-flex items-center gap-1 truncate">
-                              <GraduationCap size={12} className="text-slate-400 shrink-0" />
-                              <span className="truncate">{child.grade}</span>
-                              {child.board ? <span>· {child.board}</span> : null}
+                          {displayName}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-slate-500 font-medium">
+                          {child.grade && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                              <GraduationCap size={12} className="text-blue-600 shrink-0" />
+                              <span>{child.grade}</span>
                             </span>
-                          ) : child.board ? (
-                            <span className="truncate">{child.board}</span>
-                          ) : (
+                          )}
+                          {child.board && (
+                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                              {child.board}
+                            </span>
+                          )}
+                          {!child.grade && !child.board && (
                             <span className="text-slate-400 italic">Grade not specified</span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Status badge & Actions */}
-                    <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                    {/* Schedule Status Badge */}
+                    <div className="shrink-0 pt-0.5">
                       {schedule ? (
                         <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border shadow-2xs ${
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border ${
                             isPending
                               ? "border-amber-200/80 bg-amber-50 text-amber-800"
                               : isActive
@@ -1121,40 +1148,18 @@ export default function MyChildren() {
                           No Schedule
                         </span>
                       )}
-
-                      <div className="flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(child)}
-                          className="rounded-lg p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                          title="Edit Child Details"
-                          aria-label={`Edit ${child.name}`}
-                        >
-                          <Pencil size={14} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteChild(child.id ?? child._id, child.name)}
-                          className="rounded-lg p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          title="Delete Child Record"
-                          aria-label={`Delete ${child.name}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
                     </div>
                   </div>
 
                   {/* Body Details */}
                   <div className="space-y-3 border-t border-slate-100 pt-3.5 text-sm">
                     {/* Category & Board grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                           Education Category
                         </p>
-                        <p className="font-semibold text-slate-800 mt-0.5 break-words">
+                        <p className="font-semibold text-slate-800 mt-0.5 truncate" title={child.educationCategory || "Not specified"}>
                           {child.educationCategory || "Not specified"}
                         </p>
                       </div>
@@ -1163,7 +1168,7 @@ export default function MyChildren() {
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                           Board / Curriculum
                         </p>
-                        <p className="font-semibold text-slate-800 mt-0.5 break-words">
+                        <p className="font-semibold text-slate-800 mt-0.5 truncate" title={child.board || "Not specified"}>
                           {child.board || "Not specified"}
                         </p>
                       </div>
@@ -1190,7 +1195,7 @@ export default function MyChildren() {
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(child, "tutor")}
-                        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700 transition active:scale-95"
+                        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white hover:bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 shadow-2xs transition active:scale-95"
                         title="Change assigned tutor"
                       >
                         <UserCheck size={12} />
@@ -1208,7 +1213,7 @@ export default function MyChildren() {
                           child.subjects.map((name, idx) => (
                             <span
                               key={idx}
-                              className="inline-flex items-center rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                              className="inline-flex items-center rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
                             >
                               {name}
                             </span>
@@ -1224,7 +1229,7 @@ export default function MyChildren() {
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
                           <Clock size={14} className="text-blue-600" />
-                          <span>Weekly Schedule</span>
+                          <span>Class Schedule</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           {schedule?.hourlyRate != null && schedule.hourlyRate > 0 && (
@@ -1321,7 +1326,7 @@ export default function MyChildren() {
                     <button
                       type="button"
                       onClick={() => handleOpenEdit(child, "all")}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-700 transition active:scale-95"
+                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-700 transition active:scale-95"
                     >
                       <Pencil size={13} className="text-slate-500" />
                       <span>Edit Child & Schedule</span>
@@ -1329,8 +1334,9 @@ export default function MyChildren() {
 
                     <button
                       type="button"
-                      onClick={() => handleDeleteChild(child.id ?? child._id, child.name)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-2xs hover:bg-rose-50 hover:border-rose-300 transition active:scale-95"
+                      onClick={() => handleDeleteChild(child.id ?? child._id, displayName)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200/80 bg-white px-3 py-2 text-xs font-semibold text-rose-600 shadow-2xs hover:bg-rose-50 hover:border-rose-300 transition active:scale-95"
+                      title="Delete Child Record"
                     >
                       <Trash2 size={13} className="text-rose-500" />
                       <span>Delete</span>
