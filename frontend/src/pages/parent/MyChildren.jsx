@@ -29,6 +29,7 @@ import {
   saveTempScheduleAPI,
   getSchedulesAPI,
   getScheduleByChildIdAPI,
+  invalidateCache,
 } from "../../API/api.js";
 
 const API = `${import.meta.env.VITE_API_BASE_URL}/static_data`;
@@ -1063,52 +1064,57 @@ export default function MyChildren() {
                 className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 lg:p-6 shadow-xs hover:shadow-md transition-all duration-200"
               >
                 <div>
-                  {/* Header: Responsive on Phones and Laptop */}
-                  <div className="mb-3.5 flex flex-col xs:flex-row sm:flex-col lg:flex-row items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0 flex-1 w-full">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 font-bold text-base shadow-xs">
+                  {/* Card Header */}
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 font-bold text-base shadow-xs mt-0.5">
                         {child.name?.charAt(0)?.toUpperCase() ?? "S"}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h2 className="font-bold text-slate-900 text-base leading-snug break-words">
-                          {child.name}
+                        <h2
+                          className="font-bold text-slate-900 text-base leading-snug truncate"
+                          title={child.name || "Unnamed Child"}
+                        >
+                          {child.name || "Unnamed Child"}
                         </h2>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                          {child.grade && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                              <GraduationCap size={12} className="text-slate-500 shrink-0" />
-                              <span className="truncate max-w-[120px]">{child.grade}</span>
+                        <div className="flex items-center gap-1.5 mt-0.5 text-xs font-medium text-slate-500 truncate">
+                          {child.grade ? (
+                            <span className="inline-flex items-center gap-1 truncate">
+                              <GraduationCap size={12} className="text-slate-400 shrink-0" />
+                              <span className="truncate">{child.grade}</span>
+                              {child.board ? <span>· {child.board}</span> : null}
                             </span>
-                          )}
-                          {child.board && (
-                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 truncate max-w-[100px]">
-                              {child.board}
-                            </span>
+                          ) : child.board ? (
+                            <span className="truncate">{child.board}</span>
+                          ) : (
+                            <span className="text-slate-400 italic">Grade not specified</span>
                           )}
                         </div>
                       </div>
                     </div>
 
                     {/* Status badge & Actions */}
-                    <div className="flex items-center justify-between w-full xs:w-auto sm:w-full lg:w-auto pt-1 xs:pt-0 border-t xs:border-t-0 sm:border-t lg:border-t-0 border-slate-100 gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
                       {schedule ? (
                         <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border shadow-2xs ${isPending
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border shadow-2xs ${
+                            isPending
                               ? "border-amber-200/80 bg-amber-50 text-amber-800"
                               : isActive
                                 ? "border-emerald-200/80 bg-emerald-50 text-emerald-800"
                                 : "border-slate-200 bg-slate-50 text-slate-700"
-                            }`}
+                          }`}
                         >
                           <span
-                            className={`h-1.5 w-1.5 rounded-full ${isPending
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isPending
                                 ? "bg-amber-500 animate-pulse"
                                 : isActive
                                   ? "bg-emerald-500"
                                   : "bg-slate-400"
-                              }`}
+                            }`}
                           />
-                          <span>{isPending ? "Pending Approval" : isActive ? "Active" : schedule.status}</span>
+                          <span>{isPending ? "Pending" : isActive ? "Active" : schedule.status}</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500">
@@ -1116,25 +1122,25 @@ export default function MyChildren() {
                         </span>
                       )}
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5">
                         <button
                           type="button"
                           onClick={() => handleOpenEdit(child)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          className="rounded-lg p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           title="Edit Child Details"
                           aria-label={`Edit ${child.name}`}
                         >
-                          <Pencil size={15} />
+                          <Pencil size={14} />
                         </button>
 
                         <button
                           type="button"
                           onClick={() => handleDeleteChild(child.id ?? child._id, child.name)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          className="rounded-lg p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                           title="Delete Child Record"
                           aria-label={`Delete ${child.name}`}
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </div>

@@ -235,13 +235,16 @@ function MyStudents() {
                 <div>
                   {/* Card Header */}
                   <div className="mb-4 flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 font-bold text-base shadow-xs">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 font-bold text-base shadow-xs mt-0.5">
                         {student.name?.charAt(0)?.toUpperCase() || "S"}
                       </div>
 
-                      <div className="min-w-0">
-                        <h2 className="font-semibold text-slate-900 text-base leading-snug truncate">
+                      <div className="min-w-0 flex-1">
+                        <h2
+                          className="font-bold text-slate-900 text-base leading-snug truncate"
+                          title={student.name || "Unnamed Student"}
+                        >
                           {student.name || "Unnamed Student"}
                         </h2>
                         <p className="text-xs font-medium text-slate-500 truncate mt-0.5">
@@ -253,7 +256,7 @@ function MyStudents() {
 
                     {/* Schedule Status Badge */}
                     <span
-                      className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border ${
+                      className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border mt-0.5 ${
                         isAccepted
                           ? "border-emerald-200/80 bg-emerald-50 text-emerald-700"
                           : isPending
